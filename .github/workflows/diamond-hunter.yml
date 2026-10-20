@@ -35,6 +35,12 @@ jobs:
             diamond-state-
       - name: Run unit tests
         run: python3 -m unittest discover -s tests -v
+      - name: Dry-run global RSS scan (push, no Telegram)
+        if: github.event_name == 'push'
+        env:
+          DRY_RUN: 'true'
+          MAX_NOTIFICATIONS: '3'
+        run: python3 bot.py
       - name: Send Telegram connection test (manual runs only)
         if: github.event_name == 'workflow_dispatch'
         env:
