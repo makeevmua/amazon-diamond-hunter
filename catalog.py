@@ -190,24 +190,40 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
         price = (f'{row["advertised_price_eur"]:.2f} €'
                  if row["advertised_price_eur"] is not None else "—")
         claimed = (f'−{row["claimed_discount"]}%' if row["claimed_discount"] else "—")
-        links = f'<a href="{source}" target="_blank" rel="noopener">Источник</a>'
-        if target:
-            links += f' · <a href="{target}" target="_blank" rel="noopener">Amazon</a>'
-        scope = "Сравнение магазинов" if row["price_scope"] == "mixed_merchants_unverified" else "Цена не проверена"
+        scope = ("Цена из сравнения магазинов (не обязательно Amazon)"
+                 if row["price_scope"] == "mixed_merchants_unverified"
+                 else "Цена из объявления — не проверена на Amazon")
         photo = media.safe_image_url(row["image_url"])
-        image = ('<img loading="lazy" width="72" height="72" alt="Фото публикации" '
+        image = ('<img loading="lazy" alt="Иллюстрация объявления" '
                  'src="' + html.escape(photo, quote=True) + '">'
-                 if photo else '<span class="no-photo">Нет фото</span>')
+                 if photo else '<span class="photo-placeholder">◇</span>')
         state = html.escape(row["state"], quote=True)
+        # Even when an Amazon ASIN is known, the headline price is NOT
+        # verified on Amazon. The button always says "check", not "buy".
+        if target:
+            action = (f'<a class="action buy" href="{target}" target="_blank" '
+                      'rel="noopener noreferrer">Проверить на Amazon ↗</a>'
+                      f'<a class="action secondary" href="{source}" target="_blank" '
+                      'rel="noopener noreferrer">Объявление ↗</a>')
+        else:
+            action = (f'<a class="action buy" href="{source}" target="_blank" '
+                      'rel="noopener noreferrer">Открыть предложение ↗</a>')
+        price_text = price if row["advertised_price_eur"] is not None else "Цена не указана"
+        discount_chip = ('<span class="discount">' + claimed + '*</span>'
+                         if row["claimed_discount"] else "")
         content.append(
-            '<tr data-category="' + html.escape(row["category"], quote=True) +
+            '<article class="card" data-category="' + html.escape(row["category"], quote=True) +
             '" data-status="' + state + '" data-claim="' +
-            str(int(row["claimed_discount"])) + '"><td><div class="product">' +
-            image + '<div><b>' + name + '</b><small>' +
-            html.escape(row["source"]) + '</small></div></div></td><td>' +
-            cat + '</td><td>' + price + '</td><td>' + claimed +
-            '</td><td>' + state + '<small>' + scope +
-            '</small></td><td>' + links + '</td></tr>')
+            str(int(row["claimed_discount"])) + '" data-price="' +
+            (str(row["advertised_price_eur"]) if row["advertised_price_eur"] is not None else "") +
+            '"><div class="photo">' + image +
+            '<span class="market">' + html.escape(row["source"]) + '</span>' +
+            discount_chip + '</div><div class="info">' +
+            '<div class="category">' + cat + '</div>' +
+            '<h2>' + name + '</h2><div class="pricing">' + html.escape(price_text) +
+            '</div><div class="fineprint">' + html.escape(scope) +
+            '</div><div class="actions">' + action +
+            '</div></div></article>')
     template = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Diamond Hunter — База находок</title>
