@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "draft_not_applied_to_running_bot",
+  "status": "active_in_running_bot_as_best_effort_free_rss_scanner",
   "store": "amazon.fr",
   "currency": "EUR",
   "categories": [
@@ -50,7 +50,7 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "User-selected draft preferences only, now including Amazon France Spain Italy and delivery-to-France comparison rules. Not consumed by current bot.py/workflow. Running bot code unchanged. Evening report time still pending confirmation.",
+  "note": "Production bot reads this file for markets, brand priority and local 21:00 report; remaining constraints like real price history, seller and FR delivery are unverified and displayed as such. Only candidate discovery, not live Amazon monitoring.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -78,10 +78,11 @@
       "enabled": true,
       "format": "evening_summary",
       "timezone": "Europe/Paris",
-      "local_time": null,
-      "local_time_status": "needs_confirmation_before_implementation",
+      "local_time": "21:00",
+      "local_time_status": "confirmed_21_paris",
       "include_zero_findings": true,
-      "include": "number_of_posts_scanned, new_candidates, confirmed_deals_if_any, notable_offers and source/verification caveats"
+      "include": "number_of_posts_scanned, new_candidates, confirmed_deals_if_any, notable_offers and source/verification caveats",
+      "note": "Daily report generated from cached RSS scan counts. GitHub Actions scheduling is not exact, may be delayed or missed."
     }
   },
   "markets": [
