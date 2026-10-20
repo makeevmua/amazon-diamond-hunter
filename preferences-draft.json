@@ -50,14 +50,14 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Active best-effort public RSS scout. Core nine categories, brands, exclusions, Amazon FR/ES/IT and local 21:00 report preserved. Four additional categories and interior style keywords intended for matching; claims about seller, current price, delivery or discount history cannot be verified from RSS.",
+  "note": "Enabled: interior design 25% claimed, other chosen categories 50%, unexpected recognized-brand deals 80%. Free public RSS discovery only; prices and delivery to France are NOT verified. New sources/shortlinks may be limited by network availability.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
       "mode": "send_each_qualifying_deal_as_discovered",
       "min_discount_percent": 50,
       "send_time": "next_successful_scan",
-      "note": "Not a real-time push; expected polling approximately every 15 minutes with possible GitHub Actions delays."
+      "note": "At next successful polling run: interior design candidates from 25%, other categories from 50%, out-of-category recognizable brands from 80%. All advertised percentages unverified."
     },
     "unverified_candidates": {
       "enabled": true,
@@ -118,7 +118,7 @@
     {
       "id": "interior_design",
       "name": "Дизайн и интерьер",
-      "min_claimed_discount_percent": 50
+      "min_claimed_discount_percent": 25
     },
     {
       "id": "lego_construction",
@@ -139,7 +139,7 @@
   "interior_design_profile": {
     "enabled": true,
     "name": "Bauhaus / Nordic / Playful Modern / IKEA 1980s–1990s aesthetics",
-    "min_claimed_discount_percent": 50,
+    "min_claimed_discount_percent": 25,
     "styles": [
       "Bauhaus",
       "Nordic",
