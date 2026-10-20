@@ -1,0 +1,39 @@
+name: Amazon Diamond Hunter FREE
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+permissions:
+  contents: read
+concurrency:
+  group: diamond-hunter
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore seen-items cache
+        uses: actions/cache/restore@v4
+        with:
+          path: seen.json
+          key: diamond-state-${{ github.run_id }}
+          restore-keys: |
+            diamond-state-
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Scan and alert
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MIN_DISCOUNT: '50'
+          MAX_NOTIFICATIONS: '5'
+          DRY_RUN: 'false'
+        run: python3 bot.py
+      - name: Save seen-items cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: seen.json
+          key: diamond-state-${{ github.run_id }}
