@@ -342,6 +342,55 @@ class DiamondTests(unittest.TestCase):
                           side_effect=AssertionError("No article fetch for unrelated post")):
             self.assertEqual(bot.candidates([listing]), [])
 
+    def test_samsung_joybuy_price_not_misreported_as_amazon_offer(self):
+        # Les Numériques gives the 889 EUR headline for Joybuy while
+        # listing Amazon separately, at a higher amount.
+        item = post(
+            'Actualité : Bon plan – Le smartphone Samsung Galaxy S26+ à 889,00 € (-17%)',
+            'https://www.lesnumeriques.com/telephone-portable/bon-plan-s26.html',
+            'Chez Joybuy à 889 €, Amazon.fr à 1 172,55 € '
+            'https://amazon.fr/dp/B0G53TJ5LJ',
+            key='merchant-mix',
+        )
+        markup = '<title>Samsung Galaxy S26+ at Joybuy 889 €</title>'
+        with patch.object(bot, "fetch", return_value=markup), \
+             patch.object(bot, "ENABLE_EARLY_DISCOVERY", True):
+            self.assertEqual(bot.candidates([item]), [])
+
+    def test_lesnumeriques_multi_seller_discount_is_source_only(self):
+        item = post(
+            'Actualité : Robot aspirateur Roborock Q7 L5+ à 179,99 € (-54%)',
+            'https://www.lesnumeriques.com/aspirateur-robot/article.html',
+            'Offre chez Joybuy à 179,99 €. '
+            'Un autre vendeur Amazon à 250 €. '
+            'https://amazon.fr/dp/B0G53TJ5LJ',
+            key='rob-multi',
+        )
+        page = ('<html><head><title>Robot Roborock Q7 L5+</title>'
+                '<meta property="og:image" content="https://img.example.com/robot.jpg">'
+                '</head><body><a href="https://amazon.fr/dp/B0G53TJ5LJ">Amazon</a>'
+                '</body></html>')
+        with patch.object(bot, "fetch", return_value=page):
+            found = bot.candidates([item])
+        self.assertEqual(len(found), 1)
+        self.assertIsNone(found[0]["amazon"])
+        self.assertEqual(found[0]["discount"], 54)
+        self.assertTrue(found[0]["source_only"])
+        self.assertTrue(found[0]["merchant_comparison"])
+        self.assertEqual(found[0]["image"], "https://img.example.com/robot.jpg")
+
+    def test_dealabs_direct_amazon_still_supported(self):
+        item = post(
+            'Samsung Galaxy smartphone -65%',
+            'https://www.dealabs.com/bons-plans/samsung-direct',
+            'https://amazon.fr/dp/B0G53TJ5LJ',
+            key='samsung-dealabs',
+        )
+        with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
+            found = bot.candidates([item])
+        self.assertEqual(found[0]["amazon"], "https://amazon.fr/dp/B0G53TJ5LJ")
+        self.assertFalse(found[0]["merchant_comparison"])
+
     def test_configuration(self):
         self.assertEqual(tuple(bot.MARKETS),
                          ("amazon.fr", "amazon.es", "amazon.it"))
