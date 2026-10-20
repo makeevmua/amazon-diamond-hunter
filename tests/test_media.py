@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import unittest
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
@@ -146,6 +147,63 @@ class MediaTests(unittest.TestCase):
         payload = parse_qs(requests[1].data.decode())
         self.assertEqual(payload["text"][0], "Итоговое сообщение с предупреждением")
         self.assertIn("reply_markup", payload)
+
+    def test_real_scan_routes_item_photo_to_telegram(self):
+        item = {
+            "title": "LEGO Technic -60%",
+            "description": "https://www.amazon.fr/dp/B0B9C4DKKG",
+            "content": "", "pubDate": "",
+            "link": "https://brickset.com/article/testlego",
+            "key": "photo-test",
+            "image": "https://img.example.org/technic.jpg",
+        }
+        sent = []
+        with tempfile.TemporaryDirectory() as td, \
+             patch.dict(os.environ, {
+                 "TELEGRAM_BOT_TOKEN": "fake-token",
+                 "TELEGRAM_CHAT_ID": "12345",
+             }), \
+             patch.object(bot, "STATE_FILE", Path(td) / "seen.json"), \
+             patch.object(bot, "DRY_RUN", False), \
+             patch.object(bot, "REPORT_HOUR", 99), \
+             patch.object(bot, "telegram_send",
+                          side_effect=lambda msg, buttons=None, photo_url=None:
+                          sent.append((msg, buttons, photo_url))), \
+             patch.object(bot, "collect", return_value=([item], 1, 1)):
+            result = bot.run()
+        self.assertEqual(result, 1)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][2], "https://img.example.org/technic.jpg")
+        self.assertEqual(sent[0][1]["inline_keyboard"][0][0]["text"],
+                         "Открыть на Amazon")
+
+    def test_real_scan_uses_original_article_og_image_if_rss_missing(self):
+        item = {
+            "title": "LEGO Technic -60%",
+            "description": "https://www.amazon.es/dp/B0B9C4DKKG",
+            "content": "", "pubDate": "",
+            "link": "https://brickset.com/article/testlego",
+            "key": "photo-test-og",
+            "image": None,
+        }
+        sent = []
+        og_page = '<html><head><meta property="og:image" content="https://images.example.org/item.jpg" /></head></html>'
+        with tempfile.TemporaryDirectory() as td, \
+             patch.dict(os.environ, {
+                 "TELEGRAM_BOT_TOKEN": "fake-token",
+                 "TELEGRAM_CHAT_ID": "12345",
+             }), \
+             patch.object(bot, "STATE_FILE", Path(td) / "seen.json"), \
+             patch.object(bot, "DRY_RUN", False), \
+             patch.object(bot, "REPORT_HOUR", 99), \
+             patch.object(bot, "fetch", return_value=og_page), \
+             patch.object(bot, "telegram_send",
+                          side_effect=lambda msg, buttons=None, photo_url=None:
+                          sent.append((msg, buttons, photo_url))), \
+             patch.object(bot, "collect", return_value=([item], 1, 1)):
+            result = bot.run()
+        self.assertEqual(result, 1)
+        self.assertEqual(sent[0][2], "https://images.example.org/item.jpg")
 
     def test_long_caption_falls_back_to_text(self):
         requests = []
