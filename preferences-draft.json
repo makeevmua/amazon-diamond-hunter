@@ -50,7 +50,7 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Active conservative early RSS scouting: price-glitch phrases, branded price-only watch signals and optional comparisons to at least two distinct historical RSS offer posts. Standard 25% interior/50% other/80% surprise thresholds retained. No live Amazon price tracking or true price-history verification. Telegram alerts explicitly labeled.",
+  "note": "Running best-effort FR/ES/IT deal search. US and UK sources excluded. Original-source imagery supported with text fallback. Advertised discounts, delivery to France, merchant, actual Amazon price and item-photo identity are NOT verified.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -103,6 +103,19 @@
       "warn_unverified_amazon_seller_price_history_shipping": true,
       "message_includes_source_link_only": true,
       "note": "Source-only informational alert. An editorial offer page may point to a merchant other than Amazon; user must check merchant, live price, delivery and whether the offer is even on Amazon. No guarantee source discount is genuine."
+    },
+    "images": {
+      "enabled": true,
+      "mode": "attach_original_deal_post_image",
+      "preferred_sources": [
+        "RSS item media:thumbnail / media:content / enclosure / item img",
+        "Original article og:image / twitter:image"
+      ],
+      "do_not_guess_product_image": true,
+      "caption_disclaimer": "Фото из публикации, соответствие товару не подтверждено.",
+      "fallback_if_missing_or_telegram_rejects": "send original text alert with all links and warnings",
+      "max_additional_article_image_lookups_per_scan": 3,
+      "note": "Photo delivery attempted when the image URL is safe and the entire caption fits the Telegram photo limit; not every offer includes an image."
     }
   },
   "markets": [
@@ -276,5 +289,41 @@
     "max_notifications_per_scan": 5,
     "no_automated_amazon_checkout_or_verification": true,
     "warning": "All current prices, vendor trust, actual savings, delivery to France and item availability unverified"
+  },
+  "search_region": {
+    "active_markets": [
+      "amazon.fr",
+      "amazon.es",
+      "amazon.it"
+    ],
+    "excluded_markets": [
+      "amazon.co.uk",
+      "amazon.com"
+    ],
+    "target_delivery_country": "FR",
+    "allow_non_amazon_informational_source_links": true,
+    "allow_us_uk_merchants": false,
+    "note": "Only France, Spain and Italy Amazon marketplaces are eligible for direct product alerts; no UK or US RSS feeds. Delivery to France cannot be checked without checkout credentials."
+  },
+  "free_discovery_sources": {
+    "community_deals": [
+      "Dealabs France",
+      "Chollometro Spain",
+      "QuantoSpendo Italy"
+    ],
+    "editorial_france": [
+      "Les Numériques"
+    ],
+    "lego_specific_amazon_feeds": [
+      "https://brickset.com/feed/amazon/fr",
+      "https://brickset.com/feed/amazon/es",
+      "https://brickset.com/feed/amazon/it"
+    ],
+    "avoid": [
+      "United Kingdom deal feeds",
+      "United States deal feeds",
+      "pan-European feeds containing unwanted countries"
+    ],
+    "note": "RSS discovery only, not complete live Amazon catalog coverage. Each feed can be empty or unavailable."
   }
 }
