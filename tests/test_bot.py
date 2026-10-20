@@ -317,6 +317,31 @@ class DiamondTests(unittest.TestCase):
             self.assertEqual(len(source_keys), 3)
             self.assertIn("https://amazon.fr/dp/B0B9C4DKKG", saved)
 
+    def test_brickset_country_roundups_are_not_individual_deals(self):
+        roundup = post(
+            "Discounts at Amazon.es",
+            "https://brickset.com/article/135560",
+            "<table><tr><td>83% off</td><td>LEGO Technic "
+            "https://amazon.es/dp/B0DWDSF7DM</td>"
+            "<td>Other set https://amazon.es/dp/B00CYHRMP8</td></tr></table>",
+            key="brickset-roundup",
+        )
+        with patch.object(bot, "fetch",
+                          side_effect=AssertionError("No article fetch for roundups")):
+            self.assertEqual(bot.candidates([roundup]), [])
+
+    def test_html_table_tag_not_mistaken_for_interior_furniture(self):
+        listing = post(
+            "Generic fashion sale -30%",
+            "https://www.dealabs.com/bons-plans/fashion",
+            "<table><tr><td>generic apparel sale</td></tr></table>"
+            " https://amazon.fr/dp/B0B9C4DKKG",
+            key="html-table",
+        )
+        with patch.object(bot, "fetch",
+                          side_effect=AssertionError("No article fetch for unrelated post")):
+            self.assertEqual(bot.candidates([listing]), [])
+
     def test_configuration(self):
         self.assertEqual(tuple(bot.MARKETS),
                          ("amazon.fr", "amazon.es", "amazon.it"))
