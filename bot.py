@@ -18,6 +18,7 @@ from html.parser import HTMLParser
 import signals
 import alerts
 import media
+import catalog
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -160,6 +161,9 @@ MAX_URGENT_DAILY = max(0, min(24, int(NEW_DISCOVERY.get("max_urgent_alerts_per_d
 MAX_NOTIFICATIONS = min(8, int(os.getenv("MAX_NOTIFICATIONS", "5")))
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 REPORT_STATUS = os.getenv("REPORT_STATUS", "false").lower() == "true"
+CATALOG_ENABLED = os.getenv("CATALOG_ENABLED", "false").lower() == "true"
+CATALOG_PATH = Path(os.getenv("CATALOG_PATH", "catalog.sqlite"))
+CATALOG_EXPORT_DIR = Path(os.getenv("CATALOG_EXPORT_DIR", "catalog_export"))
 
 CATEGORY_RE = re.compile(
     r"\b(ssd|nvme|gpu|geforce|radeon|rtx|cpu|ryzen|ddr[45]|ram|laptop|"
@@ -845,6 +849,20 @@ def run():
     history = meta.setdefault("public_offer_history", {})
     notified_prices = meta.setdefault("notified_offer_prices", {})
     found = candidates(posts, history)
+    if CATALOG_ENABLED:
+        catalog_records = catalog.collect_records(
+            posts, found, category_matches, percent, price_pair,
+            signals.headline_price,
+            lambda text: bool(EXCLUDE_RE.search(text) or OBVIOUS_NO_NAME.search(text)),
+            fresh_enough, find_amazon_link,
+        )
+        saved_count = catalog.save_records(catalog_records, CATALOG_PATH)
+        exported = catalog.export(CATALOG_PATH, CATALOG_EXPORT_DIR)
+        print(
+            f"FINDINGS DATABASE: {saved_count} unique source publications; "
+            f"{len(catalog_records)} relevant listings in this scan, "
+            f"{exported['exported']} exported. Claims unverified."
+        )
     if DRY_RUN:
         for deal in found[:40]:
             print("SCAN CANDIDATE:", json.dumps({
@@ -1054,7 +1072,12 @@ def run():
             f"Кандидатов: {counts['candidates']} (интерьер от 25%, остальные от 50%) "
             "(суммарно по проверкам)\n"
             f"Отправлено уведомлений: {counts['alerts_sent']}\n"
-            f"Магазины: {markets}\n\n"
+            f"Магазины: {markets}\n"
+            + (f"База находок (CSV, JSON, HTML): "
+               f"https://github.com/makeevmua/amazon-diamond-hunter/actions/runs/"
+               f"{os.getenv('GITHUB_RUN_ID')} (раздел Artifacts)\n"
+               if CATALOG_ENABLED and os.getenv("GITHUB_RUN_ID") else "")
+            + "\n"
             "Это мониторинг публичных объявлений, не подтверждение цен Amazon. "
             "Доставка во Францию, продавец и история цен требуют проверки."
         )
