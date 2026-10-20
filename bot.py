@@ -649,6 +649,13 @@ def candidates(posts, public_history=None):
         if not dealabs_link(item["link"]):
             counters["no_category"] += 1
             continue
+        # Les Numériques articles contain multi-merchant price comparison
+        # tables. The headline's LOWEST price may belong to Joybuy, Fnac,
+        # etc., even if the page also contains an Amazon ASIN. Neither the
+        # price nor the advertised percent can be attributed to Amazon.
+        editorial_comparison = (urlsplit(item["link"]).hostname or "").lower() in (
+            "lesnumeriques.com", "www.lesnumeriques.com"
+        )
         claimed_percent = percent(title, desc)
         pair = price_pair(title + " " + desc)
         reduction = max(claimed_percent or 0, pair[0] if pair else 0)
@@ -679,19 +686,23 @@ def candidates(posts, public_history=None):
         headline_eur = signals.headline_price(title) if ENABLE_EARLY_DISCOVERY else None
         explicit_error = bool(signals.ERROR_RE.search(title)) if ENABLE_EARLY_DISCOVERY else False
         price_watch = bool(
-            ENABLE_EARLY_DISCOVERY and matches and headline_eur is not None
+            ENABLE_EARLY_DISCOVERY and not editorial_comparison
+            and matches and headline_eur is not None
             and signals.PROMO_RE.search(title)
             and (PREFERRED_BRANDS.search(title) or
                  (interior and INTERIOR_STYLE_RE.search(title)))
         )
-        potential_urgent = bool(explicit_error and headline_eur is not None and
-                                (matches or PREFERRED_BRANDS.search(title)))
+        potential_urgent = bool(
+            explicit_error and headline_eur is not None
+            and (matches or PREFERRED_BRANDS.search(title))
+        )
         # Known-product history can surface offers even without promotional
         # language. Historical comparison uses distinct RSS posts, not Amazon.
         rss_text = item["link"] + " " + item["title"] + " " + desc + " " + item["content"]
         history_direct = (
             find_amazon_link(rss_text)
-            if headline_eur is not None and "amazon." in rss_text.lower() else None
+            if not editorial_comparison and headline_eur is not None
+            and "amazon." in rss_text.lower() else None
         )
         history_comparison = (
             signals.reference_drop(
@@ -732,7 +743,9 @@ def candidates(posts, public_history=None):
             counters["below_threshold"] += 1
             continue
         # Only trusted editorial pages and exact Amazon FR/ES/IT product URLs.
-        direct = history_direct or find_amazon_link(rss_text)
+        direct = None if editorial_comparison else (
+            history_direct or find_amazon_link(rss_text)
+        )
         # Read trusted article pages only when a direct product URL is absent.
         # A fetch succeeding does not imply the product is sold on Amazon.
         article_available = False
@@ -744,7 +757,8 @@ def candidates(posts, public_history=None):
                 article_available = bool(markup.strip())
                 if article_available and not item.get("image"):
                     article_image = media.page_og_image(markup, item["link"])
-                direct = find_article_amazon_link(markup) if article_available else None
+                if not editorial_comparison:
+                    direct = find_article_amazon_link(markup) if article_available else None
             except (HTTPError, URLError, TimeoutError, ValueError, OSError):
                 pass
         if not direct and reduction < minimum and not unexpected and not potential_urgent:
@@ -799,6 +813,7 @@ def candidates(posts, public_history=None):
             "priority": priority, "market": urlsplit(direct).hostname if direct else None,
             "category": ", ".join(matches) if matches else "Unexpected Diamond",
             "source_only": direct is None,
+            "merchant_comparison": editorial_comparison,
             "signal": signal, "headline_price": headline_eur,
             "public_baseline": baseline,
             "image": item.get("image") or article_image,
@@ -926,8 +941,11 @@ def run():
                 + deal["title"][:170] + "\n\n"
                 + f"Категория: {deal['category']}\n"
                 + claim_line + observed_amount + reference_text + prices + "\n\n"
-                + "ПРЯМОЙ ССЫЛКИ AMAZON НЕТ.\n"
-                + "Неизвестно, продаётся ли этот товар на Amazon. "
+                + ("ЦЕНА В ПУБЛИКАЦИИ МОЖЕТ ОТНОСИТЬСЯ К ДРУГОМУ МАГАЗИНУ.\n"
+                   "На странице сравниваются разные продавцы; цена Amazon отдельно НЕ проверена.\n"
+                   if deal.get("merchant_comparison") else
+                   "ПРЯМОЙ ССЫЛКИ AMAZON НЕ ПОДТВЕРЖДЕНО.\n")
+                + "Неизвестно, предлагается ли эта цена на Amazon. "
                 + "Цена, продавец, доставка во Францию и история цен НЕ проверены.\n"
                 + f"Публикация для ручной проверки: {item['link']}"
             )
@@ -1009,6 +1027,11 @@ def run():
             # Avoid spending network calls on unrelated entries or short URLs.
             combined = item["link"] + " " + item["description"] + " " + item["content"]
             if "amazon." not in combined.lower():
+                continue
+            # Never record aggregator prices as if they were Amazon offers.
+            if (urlsplit(item["link"]).hostname or "").lower() in (
+                "lesnumeriques.com", "www.lesnumeriques.com"
+            ):
                 continue
             direct = find_amazon_link(combined)
             if direct:
