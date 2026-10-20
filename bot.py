@@ -534,36 +534,65 @@ def save_seen(seen):
     temp_file.replace(STATE_FILE)
 
 
-def telegram_send(message, buttons=None):
+def telegram_send(message, buttons=None, photo_url=None):
+    """Send photo and caption when possible, otherwise deliver full text.
+
+    Images are taken from the original deal post; they are NOT verified
+    Amazon product imagery. An inaccessible or unsupported image must
+    never prevent the deal text being delivered.
+    """
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID (Actions Secrets)")
-    payload = {
-        "chat_id": chat_id, "text": message,
-        "disable_web_page_preview": "true"
-    }
-    if buttons:
-        payload["reply_markup"] = json.dumps(buttons, ensure_ascii=False)
-    body = urlencode(payload).encode()
-    request = Request(
-        "https://api.telegram.org/bot" + token + "/sendMessage",
-        data=body, method="POST"
-    )
-    try:
-        with urlopen(request, timeout=15) as response:
-            result = json.loads(response.read().decode())
-            if not result.get("ok"):
-                raise RuntimeError("Telegram rejected message")
-    except HTTPError as error:
+    photo = media.safe_image_url(photo_url)
+    caption_suffix = "\nФото из публикации, соответствие товару не подтверждено."
+    # Use a safety margin under Telegram's 1024-character caption limit.
+    with_photo = bool(photo and len(message) + len(caption_suffix) <= 900)
+    for use_photo in ([True, False] if with_photo else [False]):
+        payload = {"chat_id": chat_id}
+        if use_photo:
+            payload.update({"photo": photo, "caption": message + caption_suffix})
+            method = "sendPhoto"
+        else:
+            payload.update({"text": message, "disable_web_page_preview": "true"})
+            method = "sendMessage"
+        if buttons:
+            payload["reply_markup"] = json.dumps(buttons, ensure_ascii=False)
+        request = Request(
+            "https://api.telegram.org/bot" + token + "/" + method,
+            data=urlencode(payload).encode(), method="POST"
+        )
         try:
-            data = json.loads(error.read(2048).decode("utf-8", "replace"))
-            reason = str(data.get("description", "unknown error"))
-        except ValueError:
-            reason = "unknown error"
-        raise RuntimeError(
-            f"Telegram API HTTP {error.code}: " + reason.replace(token, "[REDACTED]")
-        ) from None
+            with urlopen(request, timeout=15) as response:
+                data = json.loads(response.read().decode("utf-8", "replace"))
+                if not data.get("ok"):
+                    raise RuntimeError("Telegram rejected " + method)
+                return
+        except HTTPError as error:
+            if use_photo:
+                print("PHOTO FALLBACK: Telegram refused image; sending original text.")
+                continue
+            try:
+                details = json.loads(error.read(2048).decode("utf-8", "replace"))
+                reason = str(details.get("description", "unknown error"))
+            except ValueError:
+                reason = "unknown error"
+            raise RuntimeError(
+                f"Telegram API HTTP {error.code}: "
+                + reason.replace(token, "[REDACTED]")
+            ) from None
+        except (URLError, TimeoutError, OSError) as error:
+            if use_photo:
+                print("PHOTO FALLBACK: image send failed; retrying as text.")
+                continue
+            raise
+        except (ValueError, RuntimeError) as error:
+            if use_photo:
+                print("PHOTO FALLBACK: photo response unavailable; retrying as text.")
+                continue
+            raise
+
 
 
 def collect():
