@@ -8,6 +8,7 @@ on:
       - 'alerts.py'
       - 'signals.py'
       - 'media.py'
+      - 'catalog.py'
       - 'tests/**'
       - 'preferences-draft.json'
       - '.github/workflows/diamond-hunter.yml'
@@ -29,7 +30,9 @@ jobs:
         if: github.event_name != 'push'
         uses: actions/cache/restore@v4
         with:
-          path: seen.json
+          path: |
+            seen.json
+            catalog.sqlite
           key: diamond-state-${{ github.run_id }}
           restore-keys: |
             diamond-state-
@@ -39,6 +42,7 @@ jobs:
         if: github.event_name == 'push'
         env:
           DRY_RUN: 'true'
+          CATALOG_ENABLED: 'true'
           MAX_NOTIFICATIONS: '3'
         run: python3 bot.py
       - name: Send Telegram connection test (manual runs only)
@@ -56,10 +60,26 @@ jobs:
           MIN_DISCOUNT: '50'
           MAX_NOTIFICATIONS: '5'
           DRY_RUN: 'false'
+          CATALOG_ENABLED: 'true'
         run: python3 bot.py
       - name: Save seen-items cache
         if: success() && github.event_name != 'push'
         uses: actions/cache/save@v4
         with:
-          path: seen.json
+          path: |
+            seen.json
+            catalog.sqlite
           key: diamond-state-${{ github.run_id }}
+      - name: Publish browsable findings database
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diamond-findings-${{ github.run_id }}
+          path: |
+            catalog.sqlite
+            catalog_export/index.html
+            catalog_export/finds.csv
+            catalog_export/finds.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 9
