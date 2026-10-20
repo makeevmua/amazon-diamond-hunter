@@ -177,7 +177,12 @@ PAIR_RE = re.compile(
     r"(?P<before>\d{1,5}(?:[.,]\d{1,2})?)\s*€", re.I,
 )
 URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.I)
-ASIN_RE = re.compile(r"/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?#]|$)", re.I)
+ASIN_RE = re.compile(r"/(?:dp|gp/product|gp/aw/d|gp/offer-listing|exec/obidos/ASIN)/([A-Z0-9]{10})(?:[/?#]|$)", re.I)
+AMAZON_EMBEDDED_RE = re.compile(
+    r"https?://(?:www\.|smile\.)?amazon\.(?:fr|es|it)/[^\s\"'<>]+", re.I
+)
+SHORTLINK_HOSTS = {"amzn.eu", "amzn.to", "a.co"}
+
 BRAND_RE = re.compile(
     r"samsung|sony|lg|asus|msi|logitech|corsair|razer|"
     r"steelseries|hyperx|western digital|wd black|crucial|"
@@ -214,29 +219,95 @@ def amazon_link(candidate):
         return None
 
 
+def allowed_redirect_url(url):
+    """Allow only HTTPS Amazon marketplaces and official Amazon shorteners."""
+    try:
+        p = urlsplit(url)
+        host = (p.hostname or "").lower()
+        allowed_amazon = any(host in (market, "www." + market, "smile." + market)
+                             for market in MARKETS)
+        return (p.scheme == "https" and p.username is None and
+                p.password is None and p.port in (None, 443) and
+                (allowed_amazon or host in SHORTLINK_HOSTS))
+    except ValueError:
+        return False
+
+
+class RestrictedAmazonRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not allowed_redirect_url(newurl):
+            raise ValueError("Redirect to unapproved destination")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def resolve_shortlink(url):
+    """Follow official short links only; never fetch arbitrary redirect hosts."""
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or (parsed.hostname or "").lower() not in SHORTLINK_HOSTS:
+            return None
+        opener = build_opener(RestrictedAmazonRedirect())
+        request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with opener.open(request, timeout=DETAIL_FETCH_TIMEOUT) as response:
+            return amazon_link(response.geturl()) if allowed_redirect_url(response.geturl()) else None
+    except (HTTPError, URLError, ValueError, TimeoutError, OSError):
+        return None
+
+
 def find_amazon_link(text):
-    cleaned = html.unescape(text).replace("\\u002F", "/").replace("\\/", "/")
+    """Extract canonical direct links, even inside escaped HTML, JSON or query URLs."""
+    cleaned = str(text)
+    for _ in range(3):
+        cleaned = html.unescape(unquote(cleaned)).replace("\\u002F", "/").replace("\\/", "/")
+    # Embedded destination parameters may contain an entire Amazon URL.
+    for match in AMAZON_EMBEDDED_RE.finditer(cleaned):
+        direct = amazon_link(match.group(0))
+        if direct:
+            return direct
     for url in URL_RE.findall(cleaned):
         direct = amazon_link(url)
         if direct:
             return direct
+    # Resolve a bounded number of Amazon-owned shortened addresses.
+    tried = set()
+    for url in URL_RE.findall(cleaned):
+        try:
+            host = (urlsplit(url).hostname or "").lower()
+        except ValueError:
+            continue
+        if host in SHORTLINK_HOSTS and url not in tried:
+            tried.add(url)
+            result = resolve_shortlink(url.rstrip(".,;)\\]"))
+            if result:
+                return result
+            if len(tried) >= 2:
+                break
     return None
 
 
 def parse_feed(text):
     root = ET.fromstring(text)
     items = []
-    for entry in root.findall(".//item"):
-        fields = {
-            child.tag.split("}")[-1]: (child.text or "").strip()
-            for child in entry
-        }
+    for entry in (root.findall(".//item") or root.findall(".//{*}entry")):
+        fields = {}
+        for child in entry:
+            key = child.tag.split("}")[-1]
+            fields[key] = (
+                (child.get("href") or child.get("url") or child.text or "").strip()
+            )
+        other_urls = " ".join(
+            value for sub in entry.iter()
+            for key, value in sub.attrib.items()
+            if key.lower().endswith(("url", "href", "src")) and value.startswith("https://")
+        )
         items.append({
             "title": fields.get("title", ""),
             "description": fields.get("description", ""),
-            "content": fields.get("encoded", ""),
+            "content": " ".join(filter(None, (
+                fields.get("encoded", ""), fields.get("content", ""), other_urls
+            ))),
             "link": fields.get("link", ""),
-            "key": fields.get("guid") or fields.get("link", ""),
+            "key": fields.get("guid") or fields.get("id") or fields.get("link", ""),
             "pubDate": fields.get("pubDate", ""),
         })
     return items
@@ -248,7 +319,16 @@ def percent(title, desc):
     for match in PERCENT_RE.finditer(source):
         value = int(match.group(1))
         prefix = source[max(0, match.start() - 19):match.start()].lower()
-        if 50 <= value <= 95 and not re.search(r"jusqu['’]?\s*[àa]\s*$", prefix):
+        if 25 <= value <= 95 and not re.search(
+            r"(?:jusqu['’]?\s*[àa]|hasta|fino\s+a|up\s+to)\s*$", prefix
+        ):
+            claims.append(value)
+    for match in PERCENT_SUFFIX_RE.finditer(source):
+        value = int(match.group(1))
+        prefix = source[max(0, match.start() - 25):match.start()].lower()
+        if 25 <= value <= 95 and not re.search(
+            r"(?:jusqu['’]?\s*[àa]|hasta|fino\s+a|up\s+to)\s*$", prefix
+        ):
             claims.append(value)
     return max(claims) if claims else None
 
@@ -260,7 +340,7 @@ def price_pair(text):
         previous = float(match.group("before").replace(",", "."))
         if 5 <= current < previous <= 50000:
             claimed = round(100 * (1 - current / previous))
-            if 50 <= claimed <= 95:
+            if 25 <= claimed <= 95:
                 return claimed, current, previous
     return None
 
@@ -296,7 +376,8 @@ def dealabs_link(link):
         return p.scheme == "https" and (p.hostname or "").lower() in (
             "www.dealabs.com", "dealabs.com",
             "www.chollometro.com", "chollometro.com",
-            "quantospendo.app", "www.quantospendo.app"
+            "quantospendo.app", "www.quantospendo.app",
+            "lesnumeriques.com", "www.lesnumeriques.com"
         )
     except ValueError:
         return False
