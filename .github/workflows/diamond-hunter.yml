@@ -1,8 +1,16 @@
 name: Amazon Diamond Hunter FREE
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'bot.py'
+      - 'tests/**'
+      - 'preferences-draft.json'
+      - '.github/workflows/diamond-hunter.yml'
   schedule:
     - cron: "7,22,37,52 * * * *"
+    - cron: "0 19,20 * * *" # 21:00 Paris in summer/winter; bot checks local time
 permissions:
   contents: read
 concurrency:
@@ -31,6 +39,7 @@ jobs:
         run: |
           python3 -c 'from bot import telegram_send; telegram_send("💎 Amazon Diamond Hunter: тест успешен, Telegram подключён!")'
       - name: Scan and alert
+        if: github.event_name != 'push'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -39,7 +48,7 @@ jobs:
           DRY_RUN: 'false'
         run: python3 bot.py
       - name: Save seen-items cache
-        if: success()
+        if: success() && github.event_name != 'push'
         uses: actions/cache/save@v4
         with:
           path: seen.json
