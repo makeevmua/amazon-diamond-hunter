@@ -56,6 +56,73 @@ HOME_RE = re.compile(
     r"macchina\s+del\s+caffè|robot\s+da\s+cucina|cafetera|"
     r"freidora|lavadora|lavavajillas", re.I
 )
+# New interest filters are intentionally multilingual (FR/ES/IT/EN).
+# They classify *titles and descriptions*, not pictures or Amazon catalog data.
+INTERIOR_RE = re.compile(
+    r"\b(bauhaus|scandinavian|nordic|nordique|skandinavisch|"
+    r"memphis|space.age|design|modernist|sculptural|geometric|"
+    r"ikea|mobilier|ameublement|décoration|decoration|"
+    r"décoratif|decoracion|decoración|arredamento|"
+    r"chaise|fauteuil|tabouret|canapé|sofa|silla|sillón|"
+    r"tavolo|sedia|poltrona|sedie|stool|armchair|"
+    r"table|mesa|coffee table|side table|"
+    r"étagère|étagères|estantería|mensola|scaffale|"
+    r"lampe|lampada|lámpara|lamp|luminaire|abat.jour|"
+    r"miroir|espejo|specchio|mirror|"
+    r"vase|vaso|bougie|vela|candela|candle|"
+    r"céramique|ceramica|cerámica|ceramic|"
+    r"assiette|vaisselle|stoviglie|vajilla|"
+    r"verres?|glasses|tasse|taza|tazza|mug|"
+    r"tapis|alfombra|tappeto|rug|carpet|"
+    r"coussin|cojín|cuscino|pillow|"
+    r"rideau|cortina|tenda|curtain|"
+    r"plaid|textile|organiseur|organizer|"
+    r"burger chair|burger table|food.shaped)\b", re.I,
+)
+INTERIOR_STYLE_RE = re.compile(
+    r"bauhaus|scandinave|scandinavian|scandinavo|escandinavo|"
+    r"nordic|nordique|nordico|nórdico|modernist|modernismo|"
+    r"mid.century|ikea|memphis|space.age|"
+    r"sculptur|geometric|géométrique|geométric|"
+    r"design|statement|pop.art|playful|"
+    r"burger|food.shaped|forme originale|formas? original|"
+    r"forma originale|unusual|original design", re.I,
+)
+LOW_PRIORITY_INTERIOR_RE = re.compile(
+    r"\b(rustic|rustique|rustico|rústico|boho|"
+    r"baroque|barocco|barroco|rococo|farmhouse)\b", re.I,
+)
+LEGO_RE = re.compile(
+    r"\b(lego|duplo|technic|minifig|"
+    r"briques? de construction|jouets? de construction|"
+    r"bloques? de construcción|mattoncini|"
+    r"building blocks?|construction sets?|"
+    r"playmobil|nanoblock|cobi)\b", re.I,
+)
+COLLECTIBLES_RE = re.compile(
+    r"\b(funko|pop!|figurine|figura|figure|"
+    r"statue|statuette|collectible|collector|"
+    r"collection|coleccionable|collezionabile|"
+    r"edition limitée|édition limitée|limited edition|"
+    r"edición limitada|edizione limitata|"
+    r"art toy|designer toy|nendoroid|"
+    r"maquette|modèle réduit|modelo a escala|"
+    r"model kit|gunpla|blind box)\b", re.I,
+)
+PERSONAL_CARE_RE = re.compile(
+    r"\b(soin visage|soin corps|soins de beauté|"
+    r"rasoir|tondeuse|épilateur|brosse à dents|"
+    r"sèche.cheveux|lisseur|boucleur|"
+    r"skincare|skin care|hair care|"
+    r"hair dryer|shaver|trimmer|"
+    r"depiladora|afeitadora|secador de pelo|"
+    r"cepillo dental|cuidado personal|"
+    r"cura della persona|asciugacapelli|"
+    r"rasoio|spazzolino elettrico|"
+    r"bellezza|massaggiatore|massager|"
+    r"beauty device|personal care)\b", re.I,
+)
+
 MIN_DISCOUNT = int(os.getenv("MIN_DISCOUNT", "50"))
 MAX_NOTIFICATIONS = min(8, int(os.getenv("MAX_NOTIFICATIONS", "5")))
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
@@ -181,9 +248,29 @@ def price_pair(text):
     return None
 
 
+def category_matches(source):
+    """Classify searchable RSS text without claiming to analyze product images."""
+    groups = []
+    if CATEGORY_RE.search(source):
+        groups.append("electronics/gaming")
+    if HOME_RE.search(source):
+        groups.append("home appliances")
+    for pattern, name in (
+        (INTERIOR_RE, "design & interior"),
+        (LEGO_RE, "LEGO & construction"),
+        (COLLECTIBLES_RE, "collectibles"),
+        (PERSONAL_CARE_RE, "personal care"),
+    ):
+        if pattern.search(source):
+            groups.append(name)
+    return groups
+
+
 def relevant(title, desc):
     source = html.unescape(title + " " + re.sub(r"<[^>]*>", " ", desc[:600]))
-    return bool((CATEGORY_RE.search(source) or HOME_RE.search(source)) and not EXCLUDE_RE.search(source) and not OBVIOUS_NO_NAME.search(source))
+    return bool(category_matches(source) and
+                not EXCLUDE_RE.search(source) and
+                not OBVIOUS_NO_NAME.search(source))
 
 
 def dealabs_link(link):
@@ -296,13 +383,15 @@ def candidates(posts):
         source_text = title + " " + desc[:700]
         if EXCLUDE_RE.search(source_text) or OBVIOUS_NO_NAME.search(source_text):
             continue
-        # Explicit categories, or exceptional 70%+ deals outside categories
-        # with a recognizable brand or a substantial declared saving.
-        exceptional = (reduction >= 70 and (
-            bool(PREFERRED_BRANDS.search(source_text))
-            or (bool(pair) and (pair[2] - pair[1]) >= 100)
-        ))
-        if not relevant(title, desc) and not exceptional:
+        # Outside chosen categories, flag only recognizable brands at 80%+.
+        # The percentage is a third-party claim; history remains unverified.
+        matches = category_matches(source_text)
+        unexpected = (not matches and
+                      PREF.get("unexpected_diamond", {}).get("enabled", False) and
+                      reduction >= PREF.get("unexpected_diamond", {}).get(
+                          "min_claimed_discount_percent", 80) and
+                      bool(PREFERRED_BRANDS.search(source_text)))
+        if not matches and not unexpected:
             continue
         # Only trusted Dealabs source links, and Amazon.fr direct product ASIN.
         if not dealabs_link(item["link"]):
@@ -318,11 +407,19 @@ def candidates(posts):
                 pass
         if not direct:
             continue
-        priority = reduction + 8 * bool(ERROR_RE.search(title)) + 12 * bool(PREFERRED_BRANDS.search(title))
+        interior = "design & interior" in matches
+        style_bonus = 15 if interior and INTERIOR_STYLE_RE.search(source_text) else 0
+        style_penalty = 10 if interior and LOW_PRIORITY_INTERIOR_RE.search(source_text) else 0
+        priority = (
+            reduction + 8 * bool(ERROR_RE.search(title))
+            + 12 * bool(PREFERRED_BRANDS.search(title))
+            + style_bonus - style_penalty
+        )
         result.append({
             "item": item, "title": title, "amazon": direct,
             "discount": reduction, "pair": pair,
             "priority": priority, "market": urlsplit(direct).hostname,
+            "category": ", ".join(matches) if matches else "Unexpected Diamond",
         })
     return sorted(result, key=lambda d: (d["priority"], d["discount"]), reverse=True)
 
@@ -373,6 +470,7 @@ def run():
         message = (
             f"{level} · НЕ ПОДТВЕРЖДЕНО\n"
             + deal["title"][:170] + "\n\n"
+            + f"Категория: {deal['category']}\n"
             + f"Заявленная скидка: −{deal['discount']}%" + prices + "\n"
             + "История цен и цена Amazon: НЕ проверены\n"
             + shipping
