@@ -119,7 +119,8 @@ class PriceSignalsTests(unittest.TestCase):
              patch.object(bot, "MAX_PRICE_WATCH", 2), \
              patch.object(bot, "collect", return_value=(posts, 1, 1)):
             self.assertEqual(bot.run(), 2)
-            self.assertEqual(bot.run(), 0)
+            self.assertEqual(bot.run(), 1)  # remaining unsent product on later scan
+            self.assertEqual(bot.run(), 0)  # all distinct products deduplicated
 
 
 if __name__ == "__main__":
