@@ -50,5 +50,38 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "User-selected draft preferences only. Not consumed by bot.py or workflow; notification schedule and thresholds beyond minimum discount are to be confirmed before implementing."
+  "note": "User-approved preference and notification draft. Only this preferences-draft.json was updated. Running bot.py and .github/workflows/diamond-hunter.yml remain unchanged. Evening daily report precise hour not provided and must be confirmed before implementation.",
+  "notifications": {
+    "channel": "telegram",
+    "deal_delivery": {
+      "mode": "send_each_qualifying_deal_as_discovered",
+      "min_discount_percent": 50,
+      "send_time": "next_successful_scan",
+      "note": "Not a real-time push; expected polling approximately every 15 minutes with possible GitHub Actions delays."
+    },
+    "unverified_candidates": {
+      "enabled": true,
+      "min_claimed_discount_percent": 50,
+      "must_be_clearly_labeled_unverified": true
+    },
+    "quiet_hours": {
+      "enabled": false,
+      "timezone": "Europe/Paris",
+      "delivery": "24/7"
+    },
+    "deduplication": {
+      "enabled": true,
+      "do_not_repeat_unchanged_offers": true,
+      "notify_again_only_if_offer_materially_improves": true
+    },
+    "daily_report": {
+      "enabled": true,
+      "format": "evening_summary",
+      "timezone": "Europe/Paris",
+      "local_time": null,
+      "local_time_status": "needs_confirmation_before_implementation",
+      "include_zero_findings": true,
+      "include": "number_of_posts_scanned, new_candidates, confirmed_deals_if_any, notable_offers and source/verification caveats"
+    }
+  }
 }
