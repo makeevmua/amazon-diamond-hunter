@@ -252,6 +252,71 @@ class DiamondTests(unittest.TestCase):
                 self.assertEqual(seen["__metadata__"]["daily_stats"][
                     next(iter(seen["__metadata__"]["daily_stats"]))]["scans"], 2)
 
+    def test_source_only_candidate_requires_reachable_approved_source(self):
+        item = post("Roborock Q7 L5+ -54%",
+                    "https://www.lesnumeriques.com/aspirateur-robot/offer.html",
+                    "Robot aspirateur laveur en promotion")
+        with patch.object(bot, "fetch", return_value="<html><title>Offer</title></html>"):
+            found = bot.candidates([item])
+        self.assertEqual(len(found), 1)
+        self.assertTrue(found[0]["source_only"])
+        self.assertIsNone(found[0]["amazon"])
+        self.assertEqual(found[0]["discount"], 54)
+        self.assertTrue(found[0]["item"]["link"].startswith("https://www.lesnumeriques.com/"))
+
+    def test_source_only_rejects_failed_or_unapproved_source(self):
+        approved = post("Dyson aspirateur -55%",
+                        "https://www.dealabs.com/bons-plans/test",
+                        "Dyson aspirateur -55%")
+        foreign = post("Dyson aspirateur -55%",
+                       "https://www.chollometro.com/ofertas/offer",
+                       "Dyson aspirateur -55%")
+        with patch.object(bot, "fetch", side_effect=OSError("unavailable")):
+            self.assertEqual(bot.candidates([approved]), [])
+        with patch.object(bot, "fetch", return_value="<html><title>Offer</title></html>"):
+            self.assertEqual(bot.candidates([foreign]), [])
+
+    def test_source_only_alert_is_distinct_from_amazon_product_alert(self):
+        item = post("Vase Bauhaus -30%",
+                    "https://www.dealabs.com/bons-plans/vase-source",
+                    "Vase design -30%", key="source123")
+        direct = dict(item, description=item["description"] +
+                      " https://www.amazon.fr/dp/B0B9C4DKKG")
+        with tempfile.TemporaryDirectory() as temp, \
+             patch.object(bot, "STATE_FILE", Path(temp) / "seen.json"), \
+             patch.object(bot, "DRY_RUN", True), \
+             patch.object(bot, "fetch", return_value="<html><title>Deal</title></html>"), \
+             patch.object(bot, "collect", side_effect=[
+                 ([item], 1, 1), ([item], 1, 1), ([direct], 1, 1),
+                 ([direct], 1, 1)
+             ]):
+            self.assertEqual(bot.run(), 1)
+            self.assertEqual(bot.run(), 0)
+            self.assertEqual(bot.run(), 1)  # link upgrade allowed
+            self.assertEqual(bot.run(), 0)
+
+    def test_direct_alerts_first_and_source_only_per_scan_cap(self):
+        items = [post(
+            f"LEGO Technic set {n} -60%",
+            f"https://www.dealabs.com/bons-plans/lego{n}",
+            "LEGO construction toy -60%", key=f"unique{n}"
+        ) for n in range(5)]
+        direct = post("Samsung SSD -60%",
+                      "https://www.dealabs.com/bons-plans/ssd-high",
+                      "https://www.amazon.fr/dp/B0B9C4DKKG",
+                      key="high")
+        with tempfile.TemporaryDirectory() as temp, \
+             patch.object(bot, "STATE_FILE", Path(temp) / "seen.json"), \
+             patch.object(bot, "DRY_RUN", True), \
+             patch.object(bot, "MAX_NOTIFICATIONS", 8), \
+             patch.object(bot, "fetch", return_value="<html><title>Deal</title></html>"), \
+             patch.object(bot, "collect", return_value=(items + [direct], 1, 1)):
+            self.assertEqual(bot.run(), 4)
+            saved = bot.get_seen()
+            source_keys = [x for x in saved if x.startswith("source:")]
+            self.assertEqual(len(source_keys), 3)
+            self.assertIn("https://amazon.fr/dp/B0B9C4DKKG", saved)
+
     def test_configuration(self):
         self.assertEqual(tuple(bot.MARKETS),
                          ("amazon.fr", "amazon.es", "amazon.it"))
