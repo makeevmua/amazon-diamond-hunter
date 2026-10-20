@@ -146,6 +146,8 @@ NEW_DISCOVERY = PREF.get("early_discovery", {})
 ENABLE_EARLY_DISCOVERY = bool(NEW_DISCOVERY.get("enabled", False))
 MAX_PRICE_WATCH = max(0, min(2, int(NEW_DISCOVERY.get("max_price_watch_alerts_per_scan", 2))))
 MAX_URGENT = max(0, min(2, int(NEW_DISCOVERY.get("max_urgent_alerts_per_scan", 2))))
+MAX_PRICE_WATCH_DAILY = max(0, min(24, int(NEW_DISCOVERY.get("max_price_watch_alerts_per_day", 6))))
+MAX_URGENT_DAILY = max(0, min(24, int(NEW_DISCOVERY.get("max_urgent_alerts_per_day", 12))))
 MAX_NOTIFICATIONS = min(8, int(os.getenv("MAX_NOTIFICATIONS", "5")))
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 REPORT_STATUS = os.getenv("REPORT_STATUS", "false").lower() == "true"
@@ -771,6 +773,8 @@ def run():
         "scans": 0, "posts_checked": 0, "candidates": 0,
         "alerts_sent": 0, "markets": {}
     })
+    counts.setdefault("price_watch_sent", 0)
+    counts.setdefault("urgent_sent", 0)
     counts["scans"] += 1
     counts["posts_checked"] += len(posts)
     counts["candidates"] += len(found)
@@ -782,9 +786,15 @@ def run():
         source_only = deal["source_only"]
         if source_only and sent_source_only >= MAX_SOURCE_ALERTS:
             continue
-        if deal["signal"] == "price_watch" and sent_watch >= MAX_PRICE_WATCH:
+        if deal["signal"] == "price_watch" and (
+            sent_watch >= MAX_PRICE_WATCH or
+            counts["price_watch_sent"] >= MAX_PRICE_WATCH_DAILY
+        ):
             continue
-        if deal["signal"] == "suspected_error" and sent_urgent >= MAX_URGENT:
+        if deal["signal"] == "suspected_error" and (
+            sent_urgent >= MAX_URGENT or
+            counts["urgent_sent"] >= MAX_URGENT_DAILY
+        ):
             continue
         # Separate keys allow a later verified direct Amazon URL for the same
         # editorial post to be delivered even after a source-only alert.
@@ -866,8 +876,10 @@ def run():
             seen["product:" + item["key"]] = deal["discount"]
         if deal["signal"] == "price_watch":
             sent_watch += 1
+            counts["price_watch_sent"] += 1
         if deal["signal"] == "suspected_error":
             sent_urgent += 1
+            counts["urgent_sent"] += 1
         sent += 1
         counts["alerts_sent"] += 1
         if sent >= MAX_NOTIFICATIONS:
