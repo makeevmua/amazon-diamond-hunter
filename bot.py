@@ -51,7 +51,10 @@ HOME_RE = re.compile(
     r"machine\s+à\s+café|lave[- ]linge|lave[- ]vaisselle|"
     r"réfrigérateur|frigo|congélateur|four|micro[- ]ondes|"
     r"ventilateur|purificateur|blender|mixeur|machine\s+à\s+glace|"
-    r"balai\s+vapeur|sèche[- ]linge|air\s+conditionné", re.I
+    r"balai\s+vapeur|sèche[- ]linge|air\s+conditionné|"
+    r"aspirapolvere|friggitrice|lavatrice|lavastoviglie|"
+    r"macchina\s+del\s+caffè|robot\s+da\s+cucina|cafetera|"
+    r"freidora|lavadora|lavavajillas", re.I
 )
 MIN_DISCOUNT = int(os.getenv("MIN_DISCOUNT", "50"))
 MAX_NOTIFICATIONS = min(8, int(os.getenv("MAX_NOTIFICATIONS", "5")))
@@ -67,11 +70,16 @@ CATEGORY_RE = re.compile(
     r"processeur|mémoire|ecran|écran|moniteur|clavier|souris|"
     r"casque|écouteurs?|microphone|manettes?|jeu[x]? vidéo|"
     r"tablette|imprimante 3d|téléviseur|routeur|projecteur|"
+    r"ordenador|tarjeta\s+gráfica|auriculares|procesador|"
+    r"consola|videojuegos|teléfono|telefono|portátil|portatil|"
+    r"scheda\s+video|scheda\s+grafica|cellulare|cuffie|"
+    r"videogiochi|smartwatch|televisore|tastiera|"
     r"carte mère|alimentation pc|console de jeu", re.I,
 )
 EXCLUDE_RE = re.compile(
     r"occasion|seconde main|reconditionn|refurbished|\bused\b|"
     r"warehouse|abonnement|location|rental|rupture de stock|"
+    r"reacondicionado|segunda mano|ricondizionato|\busato\b|\busata\b|"
     r"expiré|fin du deal|écoulé|épuisé", re.I,
 )
 PERCENT_RE = re.compile(
@@ -182,7 +190,9 @@ def dealabs_link(link):
     try:
         p = urlsplit(link)
         return p.scheme == "https" and (p.hostname or "").lower() in (
-            "www.dealabs.com", "dealabs.com"
+            "www.dealabs.com", "dealabs.com",
+            "www.chollometro.com", "chollometro.com",
+            "quantospendo.app", "www.quantospendo.app"
         )
     except ValueError:
         return False
