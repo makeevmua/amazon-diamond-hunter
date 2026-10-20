@@ -50,7 +50,7 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Active free public-RSS collector. Source-only promising finds for Dealabs/Les Numériques enabled with 3-per-scan cap; no Amazon product URL is inferred. Interior claimed 25%, other categories 50%, out-of-category recognized brand 80%. Seller, shipping, current price and price history unverified.",
+  "note": "Active conservative early RSS scouting: price-glitch phrases, branded price-only watch signals and optional comparisons to at least two distinct historical RSS offer posts. Standard 25% interior/50% other/80% surprise thresholds retained. No live Amazon price tracking or true price-history verification. Telegram alerts explicitly labeled.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -239,5 +239,42 @@
     "recognizable_brand_required": true,
     "must_be_clearly_labeled_unverified": true,
     "note": "Outside selected categories, alert on stated 80%+ reductions for recognizable brands; declared savings are unverified."
+  },
+  "early_discovery": {
+    "enabled": true,
+    "method": "RSS-first early detection without a required advertised discount for tightly filtered price signals",
+    "urgent_pricing_error": {
+      "enabled": true,
+      "trigger": "explicit pricing-error phrase in title AND unambiguous price in title AND selected category or known brand",
+      "locales": [
+        "fr",
+        "es",
+        "it",
+        "en"
+      ],
+      "classification": "suspected_unverified_price_error",
+      "max_urgent_alerts_per_scan": 2,
+      "max_urgent_alerts_per_day": 12
+    },
+    "branded_price_watch": {
+      "enabled": true,
+      "trigger": "promotional wording AND exactly one € price in source post headline AND recognized brand or preferred interior style AND verified direct FR/ES/IT Amazon product URL",
+      "classification": "unverified_price_watch_not_discount",
+      "max_price_watch_alerts_per_scan": 2,
+      "max_price_watch_alerts_per_day": 6
+    },
+    "public_offer_history": {
+      "enabled": true,
+      "observation": "Single reported EUR price per distinct RSS deal post with an identifiable exact Amazon marketplace ASIN",
+      "minimum_distinct_historical_posts": 2,
+      "previous_posts_span_hours": 24,
+      "latest_previous_post_at_least_hours_old": 12,
+      "minimum_decline_percent": 40,
+      "disclaimer": "Only past publicly advertised OFFER prices, never true Amazon live/historical prices; may vary by region/seller or be inaccurate.",
+      "storage": "Best-effort GitHub Actions cache; data can be evicted or lost"
+    },
+    "max_notifications_per_scan": 5,
+    "no_automated_amazon_checkout_or_verification": true,
+    "warning": "All current prices, vendor trust, actual savings, delivery to France and item availability unverified"
   }
 }
