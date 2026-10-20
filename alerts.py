@@ -76,6 +76,7 @@ def _allowed_source_url(value):
                     "lesnumeriques.com", "www.lesnumeriques.com",
                     "chollometro.com", "www.chollometro.com",
                     "quantospendo.app", "www.quantospendo.app",
+                    "brickset.com", "www.brickset.com",
                 ))
     except ValueError:
         return False
