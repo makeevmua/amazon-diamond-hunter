@@ -468,6 +468,8 @@ def collect():
 
 def candidates(posts):
     result = []
+    detail_requests = 0
+    rejected_without_direct_link = 0
     for item in posts:
         title = html.unescape(item["title"])
         desc = item["description"]
@@ -476,36 +478,42 @@ def candidates(posts):
         claimed_percent = percent(title, desc)
         pair = price_pair(title + " " + desc)
         reduction = max(claimed_percent or 0, pair[0] if pair else 0)
-        if reduction < MIN_DISCOUNT:
-            continue
         source_text = title + " " + desc[:700]
         if EXCLUDE_RE.search(source_text) or OBVIOUS_NO_NAME.search(source_text):
             continue
-        # Outside chosen categories, flag only recognizable brands at 80%+.
-        # The percentage is a third-party claim; history remains unverified.
         matches = category_matches(source_text)
-        unexpected = (not matches and
-                      PREF.get("unexpected_diamond", {}).get("enabled", False) and
-                      reduction >= PREF.get("unexpected_diamond", {}).get(
-                          "min_claimed_discount_percent", 80) and
-                      bool(PREFERRED_BRANDS.search(source_text)))
+        interior = "design & interior" in matches
+        minimum = INTERIOR_DISCOUNT if interior else MIN_DISCOUNT
+        # Recognized-brand surprise deals require 80%+.
+        unexpected = (
+            not matches
+            and PREF.get("unexpected_diamond", {}).get("enabled", False)
+            and reduction >= SURPRISE_DISCOUNT
+            and bool(PREFERRED_BRANDS.search(source_text))
+        )
+        if reduction < minimum and not unexpected:
+            continue
         if not matches and not unexpected:
             continue
         # Only trusted Dealabs source links, and Amazon.fr direct product ASIN.
         if not dealabs_link(item["link"]):
             continue
         direct = find_amazon_link(
-            item["link"] + " " + desc + " " + item["content"]
+            item["link"] + " " + item["title"] + " " + desc + " " + item["content"]
         )
-        # A deal page may expose the merchant's direct URL when RSS does not.
-        if not direct:
+        # A known editorial deal page may expose a real merchant URL which
+        # is not present in the feed. Bound work to keep GitHub runs affordable.
+        if not direct and detail_requests < MAX_DETAIL_PAGES:
+            detail_requests += 1
             try:
-                direct = find_amazon_link(fetch(item["link"]))
-            except (HTTPError, URLError, TimeoutError, ValueError):
+                direct = find_amazon_link(
+                    fetch(item["link"], timeout=DETAIL_FETCH_TIMEOUT)
+                )
+            except (HTTPError, URLError, TimeoutError, ValueError, OSError):
                 pass
         if not direct:
+            rejected_without_direct_link += 1
             continue
-        interior = "design & interior" in matches
         style_bonus = 15 if interior and INTERIOR_STYLE_RE.search(source_text) else 0
         style_penalty = 10 if interior and LOW_PRIORITY_INTERIOR_RE.search(source_text) else 0
         priority = (
@@ -519,6 +527,10 @@ def candidates(posts):
             "priority": priority, "market": urlsplit(direct).hostname,
             "category": ", ".join(matches) if matches else "Unexpected Diamond",
         })
+    print(
+        f"Link extraction: {detail_requests} article page(s) checked; "
+        f"{rejected_without_direct_link} qualifying announcement(s) had no verified direct Amazon product URL."
+    )
     return sorted(result, key=lambda d: (d["priority"], d["discount"]), reverse=True)
 
 
@@ -598,7 +610,7 @@ def run():
             f"Запусков: {counts['scans']}\n"
             f"Проверок публикаций: {counts['posts_checked']} "
             "(включая повторные между сканированиями)\n"
-            f"Кандидатов с заявленной скидкой 50%+: {counts['candidates']} "
+            f"Кандидатов: {counts['candidates']} (интерьер от 25%, остальные от 50%) "
             "(суммарно по проверкам)\n"
             f"Отправлено уведомлений: {counts['alerts_sent']}\n"
             f"Магазины: {markets}\n\n"
@@ -614,7 +626,7 @@ def run():
     save_seen(seen)
     summary = (
         f"💎 Diamond Hunter: проверено {len(posts)} публикаций из "
-        f"{available}/{requested} лент. Кандидатов 50%+: {len(found)}, "
+        f"{available}/{requested} лент. Кандидатов по порогам 25% интерьер / 50% остальные: {len(found)}, "
         f"новых уведомлений: {sent}."
     )
     print(summary)
