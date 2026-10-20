@@ -15,6 +15,10 @@ Telegram-бот за **0 €/мес.**, который ищет **кандида
 
 ## 🌐 Бесплатный мини-сайт с карточками товаров
 
+**Открыть работающий сайт: [Diamond Hunter — витрина находок](https://makeevmua.github.io/amazon-diamond-hunter/).** Бесплатный GitHub Pages опубликован успешным деплоем GitHub Actions. На странице можно фильтровать товары и переходить к исходной публикации или на конкретную карточку Amazon.fr/es/it, если она надёжно извлечена. Публичная заявленная цена не является подтверждённой ценой Amazon.
+
+
+
 Вместо просмотра ZIP-файла вручную можно использовать **GitHub Pages** — адаптивную витрину с фотографиями, карточками товаров, заявленными ценами, скидками, поиском, фильтрами и кнопками:
 
 - **«Проверить на Amazon»** — только при наличии прямой ссылки на точную карточку Amazon.fr / .es / .it; это **не подтверждение той же цены на Amazon**.
@@ -23,7 +27,7 @@ Telegram-бот за **0 €/мес.**, который ищет **кандида
 - На телефоне два столбца, на ноутбуке 3–4; фотографии из оригинальных публикаций, если доступны. Есть категории, поиск, фильтры и сортировка по цене/заявленной скидке.
 - **Сайт обновляется автоматически после каждого успешного сканирования** (примерно каждые 15 минут по расписанию, но GitHub может задерживать задачи), путём публикации новой статической страницы и файлов CSV/JSON.
 
-**Один раз включить GitHub Pages:** [Settings → Pages](https://github.com/makeevmua/amazon-diamond-hunter/settings/pages) → в разделе **Build and deployment** выбрать **Source: GitHub Actions**. Наш workflow уже содержит задачу **Publish free deal storefront** (\`actions/configure-pages\`, \`actions/upload-pages-artifact\`, \`actions/deploy-pages\`). После включения запусти [Actions → Amazon Diamond Hunter FREE → Run workflow](https://github.com/makeevmua/amazon-diamond-hunter/actions/workflows/diamond-hunter.yml) либо дождись следующего сканирования. Стандартный адрес *после успешной публикации*:
+**Если публикация перестанет работать:** проверь [Settings → Pages](https://github.com/makeevmua/amazon-diamond-hunter/settings/pages) → **Build and deployment → Source: GitHub Actions**. Наш workflow содержит задачу **Publish free deal storefront** (\`actions/configure-pages\`, \`actions/upload-pages-artifact\`, \`actions/deploy-pages\`). После включения запусти [Actions → Amazon Diamond Hunter FREE → Run workflow](https://github.com/makeevmua/amazon-diamond-hunter/actions/workflows/diamond-hunter.yml) либо дождись следующего сканирования. Стандартный адрес *после успешной публикации*:
 \`https://makeevmua.github.io/amazon-diamond-hunter/\`.
 
 **Важно:** пока в Settings → Pages публикация не включена, задача публикации завершится ошибкой \`Get Pages site failed: Not Found\`. Сам сбор предложений, Telegram и ZIP-архивы останутся работоспособными. Без этого одноразового действия сайт нельзя считать доступным по публичной ссылке. Сервер и домен не нужны; публичный GitHub Pages для этого репозитория бесплатен.
