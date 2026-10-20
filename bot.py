@@ -14,6 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlsplit, urlencode
 from urllib.request import HTTPRedirectHandler, build_opener
 from urllib.request import Request, urlopen
+from html.parser import HTMLParser
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -26,8 +27,12 @@ FEEDS = [
     "https://quantospendo.app/offerte/feed.xml",
     "https://www.lesnumeriques.com/rss-gooddeals.xml",
     "https://www.lesnumeriques.com/informatique/rss.xml",
+    "https://www.lesnumeriques.com/gaming/rss.xml",
+    "https://www.lesnumeriques.com/loisirs/rss.xml",
+    "https://www.lesnumeriques.com/electromenager/rss.xml",
 ]
 MAX_DETAIL_PAGES = int(os.getenv("MAX_DETAIL_PAGES", "20"))
+MAX_META_DISCOVERY_PAGES = int(os.getenv("MAX_META_DISCOVERY_PAGES", "8"))
 DETAIL_FETCH_TIMEOUT = 6
 RSS_URL = os.getenv("RSS_URL")  # If specified, override all sources for local debugging.
 STATE_FILE = Path(os.getenv("STATE_FILE", "seen.json"))
@@ -182,6 +187,13 @@ AMAZON_EMBEDDED_RE = re.compile(
     r"https?://(?:www\.|smile\.)?amazon\.(?:fr|es|it)/[^\s\"'<>]+", re.I
 )
 SHORTLINK_HOSTS = {"amzn.eu", "amzn.to", "a.co"}
+PROMO_HINT_RE = re.compile(
+    r"bon\s+plan|promo|soldes|discount|"
+    r"offre|oferta|offerta|deal|réduction|sconto|"
+    r"descuento|economis|économis", re.I
+)
+SCAN_STATS = {}
+
 
 BRAND_RE = re.compile(
     r"samsung|sony|lg|asus|msi|logitech|corsair|razer|"
@@ -255,10 +267,14 @@ def resolve_shortlink(url):
 
 
 def find_amazon_link(text):
-    """Extract canonical direct links, even inside escaped HTML, JSON or query URLs."""
+    """Extract canonical direct links from escaped HTML, JSON or URL parameters."""
     cleaned = str(text)
     for _ in range(3):
-        cleaned = html.unescape(unquote(cleaned)).replace("\\u002F", "/").replace("\\/", "/")
+        cleaned = html.unescape(unquote(cleaned)).replace("\\/", "/")
+        cleaned = re.sub(
+            r"\\u(0026|002f|003a|003d|003f)", 
+            lambda m: chr(int(m.group(1), 16)), cleaned, flags=re.I
+        )
     # Embedded destination parameters may contain an entire Amazon URL.
     for match in AMAZON_EMBEDDED_RE.finditer(cleaned):
         direct = amazon_link(match.group(0))
@@ -311,6 +327,39 @@ def parse_feed(text):
             "pubDate": fields.get("pubDate", ""),
         })
     return items
+
+
+class ArticleMetadata(HTMLParser):
+    """Only extract first-party article title and description, not sidebar promos."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.texts = []
+        self.in_title = False
+
+    def handle_starttag(self, tag, attrs):
+        meta = dict(attrs)
+        if tag == "title":
+            self.in_title = True
+        if tag == "meta" and (
+            meta.get("name", "").lower() in ("description", "twitter:description")
+            or meta.get("property", "").lower() in (
+                "og:title", "og:description", "twitter:title")
+        ):
+            self.texts.append(meta.get("content", "")[:700])
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self.in_title = False
+
+    def handle_data(self, data):
+        if self.in_title:
+            self.texts.append(data[:350])
+
+
+def article_metadata(markup):
+    parser = ArticleMetadata()
+    parser.feed(markup[:400_000])
+    return " ".join(parser.texts)[:1800]
 
 
 def percent(title, desc):
