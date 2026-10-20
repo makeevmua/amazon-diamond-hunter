@@ -284,7 +284,7 @@ input:focus,select:focus{border-color:var(--gold)}input[type=search]{flex:1 1 27
 footer a{color:#e7c681}
 @media(max-width:1090px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:710px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.photo{height:175px}.info{padding:12px}.pricing{font-size:21px}.info h2{font-size:13px;min-height:62px}.hero{padding-top:36px}.brand{font-size:14px}header{height:67px}.stat{min-width:100px;padding:10px 13px}.stat b{font-size:21px}}
-@media(max-width:440px){.photo{height:145px}.market{font-size:9px;padding:5px}.discount{font-size:11px;padding:5px}.action{flex-basis:100%;font-size:11px}.toolbar{padding:10px}.stat{min-width:91px}}
+@media(max-width:440px){.hero{padding:26px 0 14px}h1{font-size:33px;margin:9px 0 12px}.lead{font-size:12px;line-height:1.45;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:13px 0 5px}.stat{min-width:0;padding:8px}.stat b{font-size:20px}.stat span{font-size:9px}.toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:10px;gap:8px}.toolbar input{grid-column:1/-1;min-height:41px;padding:9px}.toolbar select{width:100%;min-width:0;min-height:41px;padding:8px;font-size:11px}.photo{height:145px}.market{font-size:9px;padding:5px}.discount{font-size:11px;padding:5px}.action{flex-basis:100%;font-size:11px}.tabs{margin:10px 0 12px}.tablist{gap:5px}.tablist button{padding:7px 10px;font-size:11px}}
 @media(prefers-reduced-motion:reduce){.card{transition:none}}
 </style></head><body>
 <header class="wrap"><div class="brand"><span class="mark">💎</span><span>DIAMOND <em>HUNTER</em></span></div>
@@ -313,6 +313,12 @@ footer a{color:#e7c681}
 <script>
 "use strict";
 const cards=[...document.querySelectorAll("#cards .card")];
+for(const img of document.querySelectorAll(".photo img")){
+  img.addEventListener("error",()=>{
+    const missing=document.createElement("span");missing.className="photo-placeholder";
+    missing.textContent="◇";img.replaceWith(missing);
+  });
+}
 const category=document.getElementById("category"),status=document.getElementById("status"),
 sort=document.getElementById("sort"),search=document.getElementById("search"),wrap=document.getElementById("cards");
 const allCategories=[...new Set(cards.flatMap(c=>c.dataset.category.split(", ").filter(Boolean)))].sort((a,b)=>a.localeCompare(b));
