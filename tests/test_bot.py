@@ -122,7 +122,45 @@ class DiamondTests(unittest.TestCase):
     def test_editorial_source_trusted(self):
         self.assertTrue(bot.dealabs_link("https://www.lesnumeriques.com/soldes/bon-plan.html"))
 
-    def test_crossborder_candidate_with_disclosed_market(self):
+    def test_fabric_percentages_are_not_deals(self):
+        self.assertIsNone(bot.percent(
+            "Pull col rond Bonobo Instinct - 70% coton", ""
+        ))
+        self.assertIsNone(bot.percent("Chemise - 60% polyester", ""))
+        self.assertIsNone(bot.percent("Camicia - 55% cotone", ""))
+        self.assertEqual(bot.percent("SSD Samsung -55%", ""), 55)
+
+    def test_metadata_only_extracts_article_header(self):
+        page = """<html><head><title>Promo lampe Nordic</title>
+        <meta property="og:description"
+        content="Lampe Nordic -30% chez Amazon"/></head>
+        <body><aside>SSD -99% discount
+        https://www.amazon.fr/dp/B0B9C4DKKJ</aside></body></html>"""
+        metadata = bot.article_metadata(page)
+        self.assertEqual(bot.percent(metadata, ""), 30)
+        self.assertNotIn("99%", metadata)
+
+    def test_ambiguous_article_does_not_choose_wrong_amazon(self):
+        multiple = """<main>
+            href="https://www.amazon.fr/dp/B0B9C4DKKG"
+            href="https://www.amazon.fr/dp/B0B9C4DKKH"
+        </main>"""
+        self.assertIsNone(bot.find_article_amazon_link(multiple))
+        single = """<main>
+            href="https://www.amazon.es/dp/B0B9C4DKKG"
+            href="https://www.amazon.es/dp/B0B9C4DKKG?tag=ads"
+        </main>"""
+        self.assertEqual(bot.find_article_amazon_link(single),
+                         "https://amazon.es/dp/B0B9C4DKKG")
+
+    def test_untrusted_article_not_fetched_for_metadata(self):
+        item = post("Lampade Nordic promo", "https://wrong-site.example/spam",
+                    "Descuento! 10€")
+        with patch.object(bot, "fetch", side_effect=AssertionError("untrusted fetch")) as f:
+            self.assertEqual(bot.candidates([item]), [])
+            f.assert_not_called()
+
+
         item = post("Samsung smartphone -70%",
                     "https://www.chollometro.com/ofertas/samsung",
                     "https://www.amazon.es/dp/B0B9C4DKKG")
