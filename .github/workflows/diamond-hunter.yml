@@ -23,6 +23,13 @@ jobs:
             diamond-state-
       - name: Run unit tests
         run: python3 -m unittest discover -s tests -v
+      - name: Send Telegram connection test (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 -c 'from bot import telegram_send; telegram_send("💎 Amazon Diamond Hunter: тест успешен, Telegram подключён!")'
       - name: Scan and alert
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
