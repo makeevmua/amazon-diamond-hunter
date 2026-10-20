@@ -12,6 +12,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlsplit, urlencode
+from urllib.request import HTTPRedirectHandler, build_opener
 from urllib.request import Request, urlopen
 
 FEEDS = [
@@ -23,7 +24,11 @@ FEEDS = [
     "https://www.dealabs.com/rss/groupe/telephonie",
     "https://www.chollometro.com/rss",
     "https://quantospendo.app/offerte/feed.xml",
+    "https://www.lesnumeriques.com/rss-gooddeals.xml",
+    "https://www.lesnumeriques.com/informatique/rss.xml",
 ]
+MAX_DETAIL_PAGES = int(os.getenv("MAX_DETAIL_PAGES", "20"))
+DETAIL_FETCH_TIMEOUT = 6
 RSS_URL = os.getenv("RSS_URL")  # If specified, override all sources for local debugging.
 STATE_FILE = Path(os.getenv("STATE_FILE", "seen.json"))
 PREFERENCES_FILE = Path(__file__).with_name("preferences-draft.json")
@@ -59,9 +64,11 @@ HOME_RE = re.compile(
 # New interest filters are intentionally multilingual (FR/ES/IT/EN).
 # They classify *titles and descriptions*, not pictures or Amazon catalog data.
 INTERIOR_RE = re.compile(
-    r"\b(bauhaus|scandinavian|nordic|nordique|skandinavisch|"
-    r"memphis|space.age|design|modernist|sculptural|geometric|"
-    r"ikea|mobilier|ameublement|décoration|decoration|"
+    r"\b(chair|chairs|desk|desk chair|wall art|art mural|objet déco|"
+    r"furniture|furnishing|sofa|scandinavian style chair|"
+    r"bauhaus chair|bauhaus lampe|sculptural vase|"
+    r"memphis furniture|space.age furniture|designer furniture|"
+    r"ikea furniture|mobilier|ameublement|décoration|decoration|"
     r"décoratif|decoracion|decoración|arredamento|"
     r"chaise|fauteuil|tabouret|canapé|sofa|silla|sillón|"
     r"tavolo|sedia|poltrona|sedie|stool|armchair|"
@@ -123,7 +130,9 @@ PERSONAL_CARE_RE = re.compile(
     r"beauty device|personal care)\b", re.I,
 )
 
-MIN_DISCOUNT = int(os.getenv("MIN_DISCOUNT", "50"))
+MIN_DISCOUNT = int(os.getenv("MIN_DISCOUNT", str(PREF.get("min_discount_percent", 50))))
+INTERIOR_DISCOUNT = int(PREF.get("interior_design_profile", {}).get("min_claimed_discount_percent", 25))
+SURPRISE_DISCOUNT = int(PREF.get("unexpected_diamond", {}).get("min_claimed_discount_percent", 80))
 MAX_NOTIFICATIONS = min(8, int(os.getenv("MAX_NOTIFICATIONS", "5")))
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 REPORT_STATUS = os.getenv("REPORT_STATUS", "false").lower() == "true"
@@ -150,13 +159,21 @@ EXCLUDE_RE = re.compile(
     r"expiré|fin du deal|écoulé|épuisé", re.I,
 )
 PERCENT_RE = re.compile(
-    r"(?:(?:-|−|–)\s*|remise\s+de\s*|"
-    r"r[eé]duction\s+de\s*|économie\s+de\s*|discount\s+de\s*)"
-    r"(\d{2,3})\s*%", re.I,
+    r"(?:(?:-|−|–)\s*|remise\s+(?:de\s*)?|"
+    r"r[eé]duction\s+(?:de\s*)?|économie\s+de\s*|"
+    r"discount\s+(?:de\s*)?|descuento\s+(?:del?\s*)?|"
+    r"sconto\s+(?:del?\s*)?)"
+    r"(\d{1,3})\s*%", re.I,
+)
+PERCENT_SUFFIX_RE = re.compile(
+    r"\b(\d{1,3})\s*%\s*(?:off|de\s+descuento|di\s+sconto|"
+    r"de\s+réduction|de\s+remise)", re.I,
 )
 PAIR_RE = re.compile(
     r"(?P<now>\d{1,5}(?:[.,]\d{1,2})?)\s*€\s*"
-    r"(?:au\s+lieu\s+de|contre|plut[oô]t\s+que)\s*"
+    r"(?:au\s+lieu\s+de|contre|plut[oô]t\s+que|"
+    r"antes\s+(?:de|por)|invece\s+di|anziché|anziche|"
+    r"precio\s+anterior|prima\s+di)\s*"
     r"(?P<before>\d{1,5}(?:[.,]\d{1,2})?)\s*€", re.I,
 )
 URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.I)
