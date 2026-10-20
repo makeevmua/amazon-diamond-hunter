@@ -138,6 +138,9 @@ PERSONAL_CARE_RE = re.compile(
 MIN_DISCOUNT = int(os.getenv("MIN_DISCOUNT", str(PREF.get("min_discount_percent", 50))))
 INTERIOR_DISCOUNT = int(PREF.get("interior_design_profile", {}).get("min_claimed_discount_percent", 25))
 SURPRISE_DISCOUNT = int(PREF.get("unexpected_diamond", {}).get("min_claimed_discount_percent", 80))
+SOURCE_ALERT_SETTINGS = PREF.get("notifications", {}).get("source_only_promising_alerts", {})
+SOURCE_ALERTS_ENABLED = bool(SOURCE_ALERT_SETTINGS.get("enabled", False))
+MAX_SOURCE_ALERTS = max(0, min(3, int(SOURCE_ALERT_SETTINGS.get("maximum_notifications_per_scan", 3))))
 MAX_NOTIFICATIONS = min(8, int(os.getenv("MAX_NOTIFICATIONS", "5")))
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 REPORT_STATUS = os.getenv("REPORT_STATUS", "false").lower() == "true"
@@ -637,14 +640,15 @@ def candidates(posts):
         direct = find_amazon_link(
             item["link"] + " " + item["title"] + " " + desc + " " + item["content"]
         )
-        # A known editorial deal page may expose a real merchant URL which
-        # is not present in the feed. Bound work to keep GitHub runs affordable.
+        # Read trusted article pages only when a direct product URL is absent.
+        # A fetch succeeding does not imply the product is sold on Amazon.
+        article_available = False
         if not direct and detail_requests < MAX_DETAIL_PAGES:
             detail_requests += 1
             try:
-                direct = find_article_amazon_link(
-                    fetch(item["link"], timeout=DETAIL_FETCH_TIMEOUT)
-                )
+                markup = fetch(item["link"], timeout=DETAIL_FETCH_TIMEOUT)
+                article_available = bool(markup.strip())
+                direct = find_article_amazon_link(markup) if article_available else None
             except (HTTPError, URLError, TimeoutError, ValueError, OSError):
                 pass
         if not direct:
@@ -652,7 +656,15 @@ def candidates(posts):
             counters["no_amazon_product_link"] += 1
             if len(unresolved_examples) < 3:
                 unresolved_examples.append((title[:110], item["link"][:180]))
-            continue
+            # The fallback links to the actual editorial article, not Amazon.
+            # Only use two approved source domains for informational alerts.
+            source_host = (urlsplit(item["link"]).hostname or "").lower()
+            fallback_source = source_host in (
+                "dealabs.com", "www.dealabs.com",
+                "lesnumeriques.com", "www.lesnumeriques.com",
+            )
+            if not (SOURCE_ALERTS_ENABLED and article_available and fallback_source):
+                continue
         style_bonus = 15 if interior and INTERIOR_STYLE_RE.search(source_text) else 0
         style_penalty = 10 if interior and LOW_PRIORITY_INTERIOR_RE.search(source_text) else 0
         priority = (
@@ -664,8 +676,9 @@ def candidates(posts):
         result.append({
             "item": item, "title": title, "amazon": direct,
             "discount": reduction, "pair": pair,
-            "priority": priority, "market": urlsplit(direct).hostname,
+            "priority": priority, "market": urlsplit(direct).hostname if direct else None,
             "category": ", ".join(matches) if matches else "Unexpected Diamond",
+            "source_only": direct is None,
         })
     print(
         f"Article lookups: {detail_requests} link checks, "
@@ -675,7 +688,10 @@ def candidates(posts):
     print("SCAN FUNNEL:", json.dumps(counters, ensure_ascii=False))
     for candidate_title, candidate_url in unresolved_examples:
         print("UNRESOLVED:", repr(candidate_title), candidate_url)
-    return sorted(result, key=lambda d: (d["priority"], d["discount"]), reverse=True)
+    # Amazon product URLs always outrank source-only editorial links.
+    return sorted(result, key=lambda d: (
+        not d["source_only"], d["priority"], d["discount"]
+    ), reverse=True)
 
 
 def run():
@@ -688,6 +704,7 @@ def run():
     seen = get_seen()
     found = candidates(posts)
     sent = 0
+    sent_source_only = 0
     today = datetime.now(LOCAL_TZ).date().isoformat()
     meta = seen.setdefault("__metadata__", {})
     stats = meta.setdefault("daily_stats", {})
@@ -699,15 +716,22 @@ def run():
     counts["posts_checked"] += len(posts)
     counts["candidates"] += len(found)
     for candidate in found:
-        market = candidate["market"] or "unknown"
+        market = candidate["market"] or "editorial-link-only"
         counts["markets"][market] = counts["markets"].get(market, 0) + 1
     for deal in found:
         item = deal["item"]
-        asin_key = deal["amazon"]
-        # Notify again only if *claimed* discount grows at least 10 percentage points.
-        if int(seen.get(asin_key, 0)) + (10 if asin_key in seen else 0) > deal["discount"]:
+        source_only = deal["source_only"]
+        if source_only and sent_source_only >= MAX_SOURCE_ALERTS:
             continue
-        if item["key"] in seen and int(seen[item["key"]]) >= deal["discount"]:
+        # Separate keys allow a later verified direct Amazon URL for the same
+        # editorial post to be delivered even after a source-only alert.
+        dedupe_key = ("source:" + item["key"]) if source_only else deal["amazon"]
+        previous = seen.get(dedupe_key)
+        if previous is not None and deal["discount"] < int(previous) + 10:
+            continue
+        if not source_only and ("product:" + item["key"]) in seen and (
+            int(seen["product:" + item["key"]]) >= deal["discount"]
+        ):
             continue
         pair = deal["pair"]
         prices = (
@@ -716,33 +740,50 @@ def run():
         )
         level = "⚡ ВОЗМОЖНАЯ ЦЕНОВАЯ ОШИБКА" if ERROR_RE.search(deal["title"]) else "💎 КАНДИДАТ НА СКИДКУ"
         market = deal["market"] or "Amazon"
-        shipping = (
+        if source_only:
+            message = (
+                "🔎 ПЕРСПЕКТИВНАЯ НАХОДКА — НЕПРОВЕРЕНО\n"
+                + deal["title"][:170] + "\n\n"
+                + f"Категория: {deal['category']}\n"
+                + f"Заявленная скидка источника: −{deal['discount']}%"
+                + prices + "\n\n"
+                + "ПРЯМОЙ ССЫЛКИ AMAZON НЕТ.\n"
+                + "Неизвестно, продаётся ли этот товар на Amazon. "
+                + "Цена, продавец, доставка во Францию и история цен НЕ проверены.\n"
+                + f"Публикация для ручной проверки: {item['link']}"
+            )
+        else:
+            shipping = (
             "Доставка во Францию: НЕ ПРОВЕРЕНА; уточни доступность и итоговую цену в корзине.\n"
             if market in ("amazon.es", "amazon.it") else
             "Доставка и наличие: НЕ ПРОВЕРЕНЫ; уточни цену и условия.\n"
-        )
-        message = (
-            f"{level} · НЕ ПОДТВЕРЖДЕНО\n"
-            + deal["title"][:170] + "\n\n"
-            + f"Категория: {deal['category']}\n"
-            + f"Заявленная скидка: −{deal['discount']}%" + prices + "\n"
-            + "История цен и цена Amazon: НЕ проверены\n"
-            + shipping
-            + f"{market}: {deal['amazon']}\n"
-            + f"Первоисточник: {item['link']}\n\n"
-            + "Проверь цену, доставку в FR, продавца, состояние товара и график Keepa."
-        )
+            )
+            message = (
+                f"{level} · НЕ ПОДТВЕРЖДЕНО\n"
+                + deal["title"][:170] + "\n\n"
+                + f"Категория: {deal['category']}\n"
+                + f"Заявленная скидка: −{deal['discount']}%" + prices + "\n"
+                + "История цен и цена Amazon: НЕ проверены\n"
+                + shipping
+                + f"{market}: {deal['amazon']}\n"
+                + f"Первоисточник: {item['link']}\n\n"
+                + "Проверь цену, доставку в FR, продавца, состояние товара и график Keepa."
+            )
         if DRY_RUN:
             print(message + "\n---")
         else:
             telegram_send(message)
             time.sleep(0.4)
-        seen[asin_key] = deal["discount"]
-        seen[item["key"]] = deal["discount"]
+        seen[dedupe_key] = deal["discount"]
+        if source_only:
+            sent_source_only += 1
+        else:
+            seen["product:" + item["key"]] = deal["discount"]
         sent += 1
         counts["alerts_sent"] += 1
         if sent >= MAX_NOTIFICATIONS:
             break
+    print(f"Alert types this run: {sent - sent_source_only} direct Amazon; {sent_source_only} editorial source-only.")
     # Send once per Paris-local day, only during the requested 21:00 hour.
     # Scheduled 19:00 and 20:00 UTC triggers cover summer and winter DST.
     local_time = datetime.now(LOCAL_TZ)
