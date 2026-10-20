@@ -83,3 +83,45 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 9
+
+  deploy_site:
+    name: Publish free deal storefront
+    needs: scan
+    if: needs.scan.result == 'success'
+    runs-on: ubuntu-latest
+    # GitHub Pages may require one-time owner activation in Settings.
+    # A deploy problem must not prevent scans and Telegram delivery.
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: diamond-hunter-pages
+      cancel-in-progress: true
+    steps:
+      - name: Download storefront from this scan
+        uses: actions/download-artifact@v4
+        with:
+          name: diamond-findings-${{ github.run_id }}
+          path: site-data
+      - name: Prepare self-contained site
+        run: |
+          mkdir -p _site
+          cp site-data/catalog_export/index.html _site/index.html
+          cp site-data/catalog_export/finds.csv _site/finds.csv
+          cp site-data/catalog_export/finds.json _site/finds.json
+          touch _site/.nojekyll
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy website
+        id: deployment
+        uses: actions/deploy-pages@v4
