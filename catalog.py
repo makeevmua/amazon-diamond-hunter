@@ -86,9 +86,15 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
         candidate = candidate_by_url.get(source)
         if not groups and candidate is None:
             continue
+        pair = price_pair_fn(text)
         discount = max(percent_fn(title, description) or 0,
-                       (price_pair_fn(text) or (0,))[0])
+                       (pair or (0,))[0])
         price = headline_price_fn(title)
+        # An explicitly stated "X € instead of Y €" pair gives a
+        # single advertised offer price when the title alone has none.
+        # Never claim it has been checked on Amazon.
+        if price is None and pair is not None:
+            price = pair[1]
         price_scope = ("mixed_merchants_unverified" if host in COMPARISON_DOMAINS
                        else "unverified_public_offer")
         direct = candidate.get("amazon") if candidate else None
