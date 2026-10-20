@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'bot.py'
+      - 'alerts.py'
+      - 'signals.py'
       - 'tests/**'
       - 'preferences-draft.json'
       - '.github/workflows/diamond-hunter.yml'
@@ -23,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Restore seen-items cache
+        if: github.event_name != 'push'
         uses: actions/cache/restore@v4
         with:
           path: seen.json
@@ -39,6 +42,7 @@ jobs:
         run: |
           python3 -c 'from bot import telegram_send; telegram_send("💎 Amazon Diamond Hunter: тест успешен, Telegram подключён!")'
       - name: Scan and alert
+        if: github.event_name != 'push'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -47,7 +51,7 @@ jobs:
           DRY_RUN: 'false'
         run: python3 bot.py
       - name: Save seen-items cache
-        if: success()
+        if: success() && github.event_name != 'push'
         uses: actions/cache/save@v4
         with:
           path: seen.json
