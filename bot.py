@@ -187,6 +187,12 @@ AMAZON_EMBEDDED_RE = re.compile(
     r"https?://(?:www\.|smile\.)?amazon\.(?:fr|es|it)/[^\s\"'<>]+", re.I
 )
 SHORTLINK_HOSTS = {"amzn.eu", "amzn.to", "a.co"}
+FASHION_TITLE_RE = re.compile(
+    r"\b(pull|sweatshirt|robe|chemise|t.shirt|pantalon|"
+    r"jupe|veste|jeans|chaussures?|baskets?|sneakers?|"
+    r"vestido|camiseta|pantal[oó]n|zapatos?|"
+    r"maglietta|vestiti|giacca|scarpe|cotone|coton)\b", re.I
+)
 PROMO_HINT_RE = re.compile(
     r"bon\s+plan|promo|soldes|discount|"
     r"offre|oferta|offerta|deal|réduction|sconto|"
@@ -580,7 +586,14 @@ def candidates(posts):
         if EXCLUDE_RE.search(source_text) or OBVIOUS_NO_NAME.search(source_text):
             counters["used_or_excluded"] += 1
             continue
-        matches = category_matches(source_text)
+        # Never let generic RSS descriptions turn clothing into a furniture deal.
+        # Clothing wasn't selected as a category; the exceptional branded
+        # 80%+ rule is handled separately after category matching.
+        fashion_only_title = (
+            bool(FASHION_TITLE_RE.search(title))
+            and not category_matches(title)
+        )
+        matches = [] if fashion_only_title else category_matches(source_text)
         interior = "design & interior" in matches
         minimum = INTERIOR_DISCOUNT if interior else MIN_DISCOUNT
         # Recognized-brand surprise deals require 80%+.
