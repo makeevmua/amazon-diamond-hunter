@@ -25,6 +25,31 @@ class PriceSignalsTests(unittest.TestCase):
         self.assertIsNone(signals.headline_price("RTX 5080 -70%"))
         self.assertIsNone(signals.headline_price("coût de 2 €"))
 
+    def test_prices_with_european_thousands_separators(self):
+        examples = [
+            ("Samsung Galaxy S25 Ultra 1 To à 1 599,00 €", 1599.00),
+            ("MacBook Air M4 à 1 109,00 €", 1109.00),
+            ("Portable 1 172,55 €", 1172.55),
+            ("Portable 1 172,55 €", 1172.55),
+            ("TV à 1.599,00 €", 1599.00),
+            ("TV à 1,599.00 €", 1599.00),
+            ("TV 1 599 €", 1599.00),
+            ("Clavier 99,99 €", 99.99),
+        ]
+        for headline, value in examples:
+            with self.subTest(headline=headline):
+                self.assertEqual(signals.headline_price(headline), value)
+
+    def test_loyalty_rewards_not_mislabeled_as_sale_price(self):
+        self.assertIsNone(signals.headline_price(
+            "Apple iPhone 17e - 90€ sur la carte fidélité"))
+        self.assertIsNone(signals.headline_price(
+            "Console - 100 € cashback"))
+        self.assertIsNone(signals.headline_price(
+            "Samsung 199 € ou 159 €"))
+        self.assertEqual(signals.headline_price(
+            "Samsung SSD à 79,99 €"), 79.99)
+
     def test_error_signals_multilingual(self):
         for phrase in ("erreur de prix", "bug de prix", "error de precio",
                        "errore di prezzo", "price glitch", "pricing error"):
