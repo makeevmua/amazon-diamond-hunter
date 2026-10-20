@@ -50,7 +50,7 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "User-approved preference and notification draft. Only this preferences-draft.json was updated. Running bot.py and .github/workflows/diamond-hunter.yml remain unchanged. Evening daily report precise hour not provided and must be confirmed before implementation.",
+  "note": "User-selected draft preferences only, now including Amazon France Spain Italy and delivery-to-France comparison rules. Not consumed by current bot.py/workflow. Running bot code unchanged. Evening report time still pending confirmation.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -83,5 +83,34 @@
       "include_zero_findings": true,
       "include": "number_of_posts_scanned, new_candidates, confirmed_deals_if_any, notable_offers and source/verification caveats"
     }
+  },
+  "markets": [
+    "amazon.fr",
+    "amazon.es",
+    "amazon.it"
+  ],
+  "destination_country": "FR",
+  "cross_border_rules": {
+    "allow_amazon_es_and_amazon_it": true,
+    "france_delivery_required": true,
+    "compare_effective_delivered_price_eur": true,
+    "effective_price_components": [
+      "item price incl applicable VAT",
+      "shipping to France",
+      "mandatory additional fees",
+      "coupon or Prime conditions if eligible"
+    ],
+    "marketplace_specific_offer_and_stock_check": true,
+    "compare_with_france_alternative_if_possible": true,
+    "link_must_target_exact_product_page_on_source_marketplace": true,
+    "direct_link_examples": [
+      "https://www.amazon.fr/dp/ASIN",
+      "https://www.amazon.es/dp/ASIN",
+      "https://www.amazon.it/dp/ASIN"
+    ],
+    "flag_unconfirmed_shipping_availability": true,
+    "exclude_non_deliverable_to_france": true,
+    "warn_about_variant_language_plugs_keyboard_and_warranty_if_relevant": true,
+    "avoid_claiming_same_ASIN_or_offer_exists_in_all_marketplaces": true
   }
 }
