@@ -16,6 +16,7 @@ from urllib.request import HTTPRedirectHandler, build_opener
 from urllib.request import Request, urlopen
 from html.parser import HTMLParser
 import signals
+import alerts
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -516,18 +517,24 @@ def save_seen(seen):
     metadata = seen.get("__metadata__", {})
     subset = {k: v for k, v in list(seen.items())[-5000:] if k != "__metadata__"}
     subset["__metadata__"] = metadata
-    STATE_FILE.write_text(json.dumps(subset, ensure_ascii=False), encoding="utf-8")
+    # Atomic replacement avoids half-written state on interrupted runs.
+    temp_file = STATE_FILE.with_name(STATE_FILE.name + ".tmp")
+    temp_file.write_text(json.dumps(subset, ensure_ascii=False), encoding="utf-8")
+    temp_file.replace(STATE_FILE)
 
 
-def telegram_send(message):
+def telegram_send(message, buttons=None):
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID (Actions Secrets)")
-    body = urlencode({
+    payload = {
         "chat_id": chat_id, "text": message,
         "disable_web_page_preview": "true"
-    }).encode()
+    }
+    if buttons:
+        payload["reply_markup"] = json.dumps(buttons, ensure_ascii=False)
+    body = urlencode(payload).encode()
     request = Request(
         "https://api.telegram.org/bot" + token + "/sendMessage",
         data=body, method="POST"
@@ -762,6 +769,7 @@ def run():
     seen = get_seen()
     meta = seen.setdefault("__metadata__", {})
     history = meta.setdefault("public_offer_history", {})
+    notified_prices = meta.setdefault("notified_offer_prices", {})
     found = candidates(posts, history)
     sent = 0
     sent_source_only = 0
@@ -800,11 +808,17 @@ def run():
         # editorial post to be delivered even after a source-only alert.
         dedupe_key = ("source:" + item["key"]) if source_only else deal["amazon"]
         previous = seen.get(dedupe_key)
-        if previous is not None and deal["discount"] < int(previous) + 10:
-            continue
-        if not source_only and ("product:" + item["key"]) in seen and (
-            int(seen["product:" + item["key"]]) >= deal["discount"]
+        current_headline_price = deal["headline_price"]
+        if not alerts.meaningful_change(
+            previous, deal["discount"],
+            notified_prices.get(dedupe_key), current_headline_price
         ):
+            continue
+        # Preserve an upgrade from source-only to direct Amazon URL.
+        # For the same direct-link article, don't re-alert on unchanged claims.
+        item_key = "product:" + item["key"]
+        if (not source_only and deal["discount"] > 0 and item_key in seen and
+                deal["discount"] < int(seen[item_key]) + 10):
             continue
         pair = deal["pair"]
         prices = (
@@ -864,12 +878,15 @@ def run():
                 + f"Первоисточник: {item['link']}\n\n"
                 + "Проверь цену, доставку в FR, продавца, состояние товара и график Keepa."
             )
+        buttons = alerts.deal_buttons(deal["amazon"], item["link"])
         if DRY_RUN:
             print(message + "\n---")
         else:
-            telegram_send(message)
+            telegram_send(message, buttons=buttons)
             time.sleep(0.4)
         seen[dedupe_key] = deal["discount"]
+        if current_headline_price is not None:
+            notified_prices[dedupe_key] = current_headline_price
         if source_only:
             sent_source_only += 1
         else:
@@ -884,6 +901,9 @@ def run():
         counts["alerts_sent"] += 1
         if sent >= MAX_NOTIFICATIONS:
             break
+    # Bounded dedupe price state (not verified live Amazon prices).
+    if len(notified_prices) > 3000:
+        meta["notified_offer_prices"] = dict(list(notified_prices.items())[-2000:])
     print(
         f"Alert types this run: {sent - sent_source_only} direct Amazon; "
         f"{sent_source_only} editorial source-only; {sent_urgent} suspected errors; "
