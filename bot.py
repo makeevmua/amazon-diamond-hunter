@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import time
+from zoneinfo import ZoneInfo
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
@@ -23,6 +24,33 @@ FEEDS = [
 ]
 RSS_URL = os.getenv("RSS_URL")  # If specified, override all sources for local debugging.
 STATE_FILE = Path(os.getenv("STATE_FILE", "seen.json"))
+PREFERENCES_FILE = Path(__file__).with_name("preferences-draft.json")
+try:
+    PREF = json.loads(PREFERENCES_FILE.read_text(encoding="utf-8"))
+except (ValueError, OSError):
+    PREF = {}
+MARKETS = tuple(PREF.get("markets", ["amazon.fr", "amazon.es", "amazon.it"]))
+LOCAL_TZ = ZoneInfo("Europe/Paris")
+REPORT_HOUR = int(PREF.get("notifications", {}).get("daily_report", {}).get("local_time", "21:00").split(":")[0]) if PREF.get("notifications", {}).get("daily_report", {}).get("local_time") else 21
+PREFERRED_BRANDS = re.compile(
+    r"apple|iphone|ipad|airpods|macbook|sony|playstation|samsung|lg|asus|msi|"
+    r"logitech|razer|corsair|nintendo|meta|oculus|quest|valve|steam deck|"
+    r"crucial|western digital|wd black|kingston|jbl|bose|dyson|roborock|"
+    r"philips|de.longhi|"
+    r"amd|ryzen|intel|nvidia|geforce|hyperx|steelseries|lenovo|dell|"
+    r"seagate|anker|xiaomi|aoc|gigabyte|acer|benq|tcl|hisense|electrolux|"
+    r"bosch|karcher|kärcher|gopro|garmin|hp|thrustmaster|ecovacs", re.I
+)
+OBVIOUS_NO_NAME = re.compile(
+    r"(?:\bsans\s+marque\b|\bno[ -]?name\b|\bgeneric\b|\bmarque\s+inconnue\b)", re.I
+)
+HOME_RE = re.compile(
+    r"aspirateur|robot\s+aspirateur|airfryer|friteuse|cafetière|"
+    r"machine\s+à\s+café|lave[- ]linge|lave[- ]vaisselle|"
+    r"réfrigérateur|frigo|congélateur|four|micro[- ]ondes|"
+    r"ventilateur|purificateur|blender|mixeur|machine\s+à\s+glace|"
+    r"balai\s+vapeur|sèche[- ]linge|air\s+conditionné", re.I
+)
 MIN_DISCOUNT = int(os.getenv("MIN_DISCOUNT", "50"))
 MAX_NOTIFICATIONS = min(8, int(os.getenv("MAX_NOTIFICATIONS", "5")))
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
@@ -81,12 +109,13 @@ def amazon_link(candidate):
         parsed = urlsplit(candidate)
         if parsed.scheme not in ("http", "https"):
             return None
-        if (parsed.hostname or "").lower() not in (
-            "www.amazon.fr", "amazon.fr", "smile.amazon.fr"
+        if (parsed.hostname or "").lower() not in tuple(
+            host for market in MARKETS
+            for host in (market, "www." + market, "smile." + market)
         ):
             return None
         match = ASIN_RE.search(parsed.path)
-        return "https://www.amazon.fr/dp/" + match.group(1).upper() if match else None
+        return ("https://" + (parsed.hostname or "").lower().removeprefix("www.").removeprefix("smile.") + "/dp/" + match.group(1).upper()) if match else None
     except ValueError:
         return None
 
@@ -144,7 +173,7 @@ def price_pair(text):
 
 def relevant(title, desc):
     source = html.unescape(title + " " + re.sub(r"<[^>]*>", " ", desc[:600]))
-    return bool(CATEGORY_RE.search(source) and not EXCLUDE_RE.search(source))
+    return bool((CATEGORY_RE.search(source) or HOME_RE.search(source)) and not EXCLUDE_RE.search(source) and not OBVIOUS_NO_NAME.search(source))
 
 
 def dealabs_link(link):
@@ -184,7 +213,9 @@ def get_seen():
 def save_seen(seen):
     # Values store the highest notified *claimed* discount for each deal or ASIN.
     # No Amazon price history is inferred from these values.
-    subset = dict(list(seen.items())[-5000:])
+    metadata = seen.get("__metadata__", {})
+    subset = {k: v for k, v in list(seen.items())[-5000:] if k != "__metadata__"}
+    subset["__metadata__"] = metadata
     STATE_FILE.write_text(json.dumps(subset, ensure_ascii=False), encoding="utf-8")
 
 
@@ -243,12 +274,23 @@ def candidates(posts):
     for item in posts:
         title = html.unescape(item["title"])
         desc = item["description"]
-        if not fresh_enough(item["pubDate"]) or not relevant(title, desc):
+        if not fresh_enough(item["pubDate"]):
             continue
         claimed_percent = percent(title, desc)
         pair = price_pair(title + " " + desc)
         reduction = max(claimed_percent or 0, pair[0] if pair else 0)
         if reduction < MIN_DISCOUNT:
+            continue
+        source_text = title + " " + desc[:700]
+        if EXCLUDE_RE.search(source_text) or OBVIOUS_NO_NAME.search(source_text):
+            continue
+        # Explicit categories, or exceptional 70%+ deals outside categories
+        # with a recognizable brand or a substantial declared saving.
+        exceptional = (reduction >= 70 and (
+            bool(PREFERRED_BRANDS.search(source_text))
+            or (bool(pair) and (pair[2] - pair[1]) >= 100)
+        ))
+        if not relevant(title, desc) and not exceptional:
             continue
         # Only trusted Dealabs source links, and Amazon.fr direct product ASIN.
         if not dealabs_link(item["link"]):
@@ -264,11 +306,11 @@ def candidates(posts):
                 pass
         if not direct:
             continue
-        priority = reduction + 8 * bool(ERROR_RE.search(title)) + 5 * bool(BRAND_RE.search(title))
+        priority = reduction + 8 * bool(ERROR_RE.search(title)) + 12 * bool(PREFERRED_BRANDS.search(title))
         result.append({
             "item": item, "title": title, "amazon": direct,
             "discount": reduction, "pair": pair,
-            "priority": priority,
+            "priority": priority, "market": urlsplit(direct).hostname,
         })
     return sorted(result, key=lambda d: (d["priority"], d["discount"]), reverse=True)
 
@@ -283,6 +325,19 @@ def run():
     seen = get_seen()
     found = candidates(posts)
     sent = 0
+    today = datetime.now(LOCAL_TZ).date().isoformat()
+    meta = seen.setdefault("__metadata__", {})
+    stats = meta.setdefault("daily_stats", {})
+    counts = stats.setdefault(today, {
+        "scans": 0, "posts_checked": 0, "candidates": 0,
+        "alerts_sent": 0, "markets": {}
+    })
+    counts["scans"] += 1
+    counts["posts_checked"] += len(posts)
+    counts["candidates"] += len(found)
+    for candidate in found:
+        market = candidate["market"] or "unknown"
+        counts["markets"][market] = counts["markets"].get(market, 0) + 1
     for deal in found:
         item = deal["item"]
         asin_key = deal["amazon"]
@@ -297,14 +352,21 @@ def run():
             if pair else ""
         )
         level = "⚡ ВОЗМОЖНАЯ ЦЕНОВАЯ ОШИБКА" if ERROR_RE.search(deal["title"]) else "💎 КАНДИДАТ НА СКИДКУ"
+        market = deal["market"] or "Amazon"
+        shipping = (
+            "Доставка во Францию: НЕ ПРОВЕРЕНА; уточни доступность и итоговую цену в корзине.\n"
+            if market in ("amazon.es", "amazon.it") else
+            "Доставка и наличие: НЕ ПРОВЕРЕНЫ; уточни цену и условия.\n"
+        )
         message = (
             f"{level} · НЕ ПОДТВЕРЖДЕНО\n"
             + deal["title"][:170] + "\n\n"
             + f"Заявленная скидка: −{deal['discount']}%" + prices + "\n"
-            + "История цен Amazon: НЕ проверена\n"
-            + f"Amazon.fr: {deal['amazon']}\n"
+            + "История цен и цена Amazon: НЕ проверены\n"
+            + shipping
+            + f"{market}: {deal['amazon']}\n"
             + f"Первоисточник: {item['link']}\n\n"
-            + "Проверь цену, продавца, состояние товара и график Keepa перед покупкой."
+            + "Проверь цену, доставку в FR, продавца, состояние товара и график Keepa."
         )
         if DRY_RUN:
             print(message + "\n---")
@@ -314,8 +376,33 @@ def run():
         seen[asin_key] = deal["discount"]
         seen[item["key"]] = deal["discount"]
         sent += 1
+        counts["alerts_sent"] += 1
         if sent >= MAX_NOTIFICATIONS:
             break
+    # Send once per Paris-local day, only during the requested 21:00 hour.
+    # Scheduled 19:00 and 20:00 UTC triggers cover summer and winter DST.
+    local_time = datetime.now(LOCAL_TZ)
+    if (not DRY_RUN and local_time.hour == REPORT_HOUR and
+            meta.get("last_report_date") != today):
+        markets = ", ".join(f"{k}: {v}" for k, v in counts["markets"].items()) or "пока нет кандидатов"
+        daily_message = (
+            f"📊 Amazon Diamond Hunter — отчёт за {today} (Париж)\n"
+            f"Запусков: {counts['scans']}\n"
+            f"Проверок публикаций: {counts['posts_checked']} "
+            "(включая повторные между сканированиями)\n"
+            f"Кандидатов с заявленной скидкой 50%+: {counts['candidates']} "
+            "(суммарно по проверкам)\n"
+            f"Отправлено уведомлений: {counts['alerts_sent']}\n"
+            f"Магазины: {markets}\n\n"
+            "Это мониторинг публичных объявлений, не подтверждение цен Amazon. "
+            "Доставка во Францию, продавец и история цен требуют проверки."
+        )
+        telegram_send(daily_message)
+        meta["last_report_date"] = today
+    # Keep only a few local-day report summaries in cached state.
+    meta["daily_stats"] = {
+        k: v for k, v in sorted(stats.items())[-4:]
+    }
     save_seen(seen)
     summary = (
         f"💎 Diamond Hunter: проверено {len(posts)} публикаций из "
