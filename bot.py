@@ -399,7 +399,14 @@ def percent(title, desc):
     for match in PERCENT_RE.finditer(source):
         value = int(match.group(1))
         prefix = source[max(0, match.start() - 19):match.start()].lower()
-        if 25 <= value <= 95 and not re.search(
+        suffix = source[match.end():match.end() + 24].lower()
+        not_real_discount = bool(re.match(
+            r"\s*(?:coton|cotton|polyester|laine|wool|"
+            r"lin|linen|élasthanne|elastane|viscose|"
+            r"acrylique|acrylic|soie|silk|"
+            r"algod[oó]n|cotone|lana|poliéster|poliestere)\b", suffix
+        ))
+        if 25 <= value <= 95 and not not_real_discount and not re.search(
             r"(?:jusqu['’]?\s*[àa]|hasta|fino\s+a|up\s+to)\s*$", prefix
         ):
             claims.append(value)
