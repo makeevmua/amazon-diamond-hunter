@@ -23,7 +23,7 @@ PROMO_RE = re.compile(
 # The offer price MUST appear in the HEADLINE. Some RSS descriptions include
 # other products, recommended prices or unrelated shipping fees.
 EURO_PRICE_RE = re.compile(
-    r"(?<!\w)(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:€|euros?|EUR)\b?",
+    r"(?<!\w)(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:€|euros?\b|EUR\b)",
     re.I,
 )
 MIN_OBSERVATION_AGE_SECONDS = 12 * 3600
