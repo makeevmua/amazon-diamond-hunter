@@ -85,13 +85,57 @@ class DiamondTests(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["market"], "amazon.it")
 
-    def test_exceptional_any_category_70_percent_with_savings(self):
-        item = post("Cool toy set -80%",
-                    "https://www.dealabs.com/bons-plans/toy",
-                    "40 € au lieu de 200 € https://amazon.fr/dp/B0B9C4DKKG")
+    def test_unexpected_diamond_requires_80_percent_and_recognized_brand(self):
+        surprise = post("Bosch mystery product -80%",
+                        "https://www.dealabs.com/bons-plans/odd",
+                        "https://amazon.fr/dp/B0B9C4DKKG")
+        plain = post("Unknown mystery product -80%",
+                     "https://www.dealabs.com/bons-plans/odd2",
+                     "https://amazon.fr/dp/B0B9C4DKKG")
+        too_low = post("Bosch mystery product -75%",
+                       "https://www.dealabs.com/bons-plans/odd3",
+                       "https://amazon.fr/dp/B0B9C4DKKG")
         with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
-            found = bot.candidates([item])
+            found = bot.candidates([surprise, plain, too_low])
         self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["category"], "Unexpected Diamond")
+
+    def test_bauhaus_and_nordic_interior_categories(self):
+        cases = [
+            ("Bauhaus lamp -65%", "modernist Nordic style"),
+            ("Fauteuil design sculptural -60%", "forme originale"),
+            ("Mesa estilo IKEA años 90 -55%", "mesa de salón"),
+            ("Lampada design Memphis -70%", "arredamento"),
+            ("Chaise en forme de burger -60%", "meuble original"),
+            ("Tapis scandinave -55%", "nordique"),
+            ("Vase céramique moderniste -60%", "décoration"),
+            ("Assiettes design -55%", "vaisselle"),
+            ("Coussins modernes -55%", "textile"),
+            ("Bougies sculpturales -55%", "déco"),
+        ]
+        for title, desc in cases:
+            with self.subTest(title=title):
+                self.assertIn("design & interior", bot.category_matches(title + " " + desc))
+                self.assertTrue(bot.relevant(title, desc))
+
+    def test_interior_style_boost_and_rustic_deprioritization(self):
+        styled = post("Fauteuil Bauhaus -60%",
+                      "https://www.dealabs.com/bons-plans/styled",
+                      "https://amazon.fr/dp/B0B9C4DKKG")
+        rustic = post("Fauteuil rustique -60%",
+                      "https://www.dealabs.com/bons-plans/rustic",
+                      "https://amazon.fr/dp/B0B9C4DKKH")
+        with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
+            found = bot.candidates([rustic, styled])
+        self.assertEqual(len(found), 2)
+        self.assertEqual(found[0]["title"], styled["title"])
+
+    def test_four_added_category_filters(self):
+        self.assertTrue(bot.relevant("LEGO Technic -50%", "set"))
+        self.assertTrue(bot.relevant("Funko Pop figurine -65%", "collector"))
+        self.assertTrue(bot.relevant("Philips rasoir -65%", "soin"))
+        self.assertTrue(bot.relevant("Nordic vase -50%", "design"))
+        self.assertFalse(bot.relevant("Bauhaus vase occasion -90%", "déjà utilisé"))
 
     def test_dry_run_deduplicates_and_tracks_state(self):
         with tempfile.TemporaryDirectory() as temp:
