@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 from html.parser import HTMLParser
 import signals
 import alerts
+import media
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -32,9 +33,14 @@ FEEDS = [
     "https://www.lesnumeriques.com/gaming/rss.xml",
     "https://www.lesnumeriques.com/loisirs/rss.xml",
     "https://www.lesnumeriques.com/electromenager/rss.xml",
+    # Only French, Spanish and Italian Amazon-specific bargain feeds.
+    "https://brickset.com/feed/amazon/fr",
+    "https://brickset.com/feed/amazon/es",
+    "https://brickset.com/feed/amazon/it",
 ]
 MAX_DETAIL_PAGES = int(os.getenv("MAX_DETAIL_PAGES", "20"))
 MAX_META_DISCOVERY_PAGES = int(os.getenv("MAX_META_DISCOVERY_PAGES", "8"))
+MAX_PHOTO_LOOKUPS = max(0, min(5, int(os.getenv("MAX_PHOTO_LOOKUPS", "3"))))
 DETAIL_FETCH_TIMEOUT = 6
 RSS_URL = os.getenv("RSS_URL")  # If specified, override all sources for local debugging.
 STATE_FILE = Path(os.getenv("STATE_FILE", "seen.json"))
@@ -361,6 +367,7 @@ def parse_feed(text):
             fields[key] = (
                 (child.get("href") or child.get("url") or child.text or "").strip()
             )
+        item_photo = media.rss_item_image(entry, fields.get("link", ""))
         other_urls = " ".join(
             value for sub in entry.iter()
             for key, value in sub.attrib.items()
@@ -374,7 +381,8 @@ def parse_feed(text):
             ))),
             "link": fields.get("link", ""),
             "key": fields.get("guid") or fields.get("id") or fields.get("link", ""),
-            "pubDate": fields.get("pubDate", ""),
+            "pubDate": fields.get("pubDate", "") or fields.get("published", "") or fields.get("updated", ""),
+            "image": item_photo,
         })
     return items
 
@@ -483,7 +491,8 @@ def dealabs_link(link):
             "www.dealabs.com", "dealabs.com",
             "www.chollometro.com", "chollometro.com",
             "quantospendo.app", "www.quantospendo.app",
-            "lesnumeriques.com", "www.lesnumeriques.com"
+            "lesnumeriques.com", "www.lesnumeriques.com",
+            "brickset.com", "www.brickset.com"
         )
     except ValueError:
         return False
@@ -706,6 +715,7 @@ def candidates(posts, public_history=None):
             fallback_source = source_host in (
                 "dealabs.com", "www.dealabs.com",
                 "lesnumeriques.com", "www.lesnumeriques.com",
+                "brickset.com", "www.brickset.com",
             )
             if not (SOURCE_ALERTS_ENABLED and article_available and fallback_source):
                 continue
@@ -745,6 +755,7 @@ def candidates(posts, public_history=None):
             "source_only": direct is None,
             "signal": signal, "headline_price": headline_eur,
             "public_baseline": baseline,
+            "image": item.get("image"),
         })
     print(
         f"Article lookups: {detail_requests} link checks, "
