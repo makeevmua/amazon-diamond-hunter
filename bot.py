@@ -623,6 +623,19 @@ def candidates(posts, public_history=None):
         )
         potential_urgent = bool(explicit_error and headline_eur is not None and
                                 (matches or PREFERRED_BRANDS.search(title)))
+        # Known-product history can surface offers even without promotional
+        # language. Historical comparison uses distinct RSS posts, not Amazon.
+        rss_text = item["link"] + " " + item["title"] + " " + desc + " " + item["content"]
+        history_direct = (
+            find_amazon_link(rss_text)
+            if headline_eur is not None and "amazon." in rss_text.lower() else None
+        )
+        history_comparison = (
+            signals.reference_drop(
+                public_history.get(history_direct, []), headline_eur,
+                item["key"], signals.publication_seconds(item["pubDate"])
+            ) if history_direct and headline_eur is not None else None
+        )
         # When the feed omits an explicit percent, inspect only article
         # title/description metadata, never the full page's unrelated sidebar.
         if reduction < minimum and (
@@ -651,14 +664,12 @@ def candidates(posts, public_history=None):
             counters["no_category"] += 1
             continue
         if reduction < minimum and not unexpected and not (
-            potential_urgent or price_watch
+            potential_urgent or price_watch or history_comparison is not None
         ):
             counters["below_threshold"] += 1
             continue
         # Only trusted editorial pages and exact Amazon FR/ES/IT product URLs.
-        direct = find_amazon_link(
-            item["link"] + " " + item["title"] + " " + desc + " " + item["content"]
-        )
+        direct = history_direct or find_amazon_link(rss_text)
         # Read trusted article pages only when a direct product URL is absent.
         # A fetch succeeding does not imply the product is sold on Amazon.
         article_available = False
@@ -687,8 +698,8 @@ def candidates(posts, public_history=None):
             )
             if not (SOURCE_ALERTS_ENABLED and article_available and fallback_source):
                 continue
-        baseline = None
-        if direct and headline_eur is not None:
+        baseline = history_comparison
+        if direct and headline_eur is not None and not baseline:
             baseline = signals.reference_drop(
                 public_history.get(direct, []), headline_eur, item["key"],
                 signals.publication_seconds(item["pubDate"])
