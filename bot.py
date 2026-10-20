@@ -47,13 +47,15 @@ MARKETS = tuple(PREF.get("markets", ["amazon.fr", "amazon.es", "amazon.it"]))
 LOCAL_TZ = ZoneInfo("Europe/Paris")
 REPORT_HOUR = int(PREF.get("notifications", {}).get("daily_report", {}).get("local_time", "21:00").split(":")[0]) if PREF.get("notifications", {}).get("daily_report", {}).get("local_time") else 21
 PREFERRED_BRANDS = re.compile(
-    r"apple|iphone|ipad|airpods|macbook|sony|playstation|samsung|lg|asus|msi|"
-    r"logitech|razer|corsair|nintendo|meta|oculus|quest|valve|steam deck|"
-    r"crucial|western digital|wd black|kingston|jbl|bose|dyson|roborock|"
-    r"philips|de.longhi|"
-    r"amd|ryzen|intel|nvidia|geforce|hyperx|steelseries|lenovo|dell|"
-    r"seagate|anker|xiaomi|aoc|gigabyte|acer|benq|tcl|hisense|electrolux|"
-    r"bosch|karcher|kärcher|gopro|garmin|hp|thrustmaster|ecovacs", re.I
+    r"\b(?:apple|iphone|ipad|airpods|macbook|sony|playstation|"
+    r"samsung|lg|asus|msi|logitech|razer|corsair|nintendo|"
+    r"meta|oculus|quest|valve|steam\s*deck|crucial|"
+    r"western\s*digital|wd\s*black|kingston|jbl|bose|"
+    r"dyson|roborock|philips|de['. -]?longhi|"
+    r"amd|ryzen|intel|nvidia|geforce|hyperx|steelseries|"
+    r"lenovo|dell|seagate|anker|xiaomi|aoc|gigabyte|"
+    r"acer|benq|tcl|hisense|electrolux|bosch|"
+    r"k[aä]rcher|gopro|garmin|hp|thrustmaster|ecovacs)\b", re.I
 )
 OBVIOUS_NO_NAME = re.compile(
     r"(?:\bsans\s+marque\b|\bno[ -]?name\b|\bgeneric\b|\bmarque\s+inconnue\b)", re.I
