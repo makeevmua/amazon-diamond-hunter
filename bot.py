@@ -693,11 +693,14 @@ def candidates(posts, public_history=None):
         # Read trusted article pages only when a direct product URL is absent.
         # A fetch succeeding does not imply the product is sold on Amazon.
         article_available = False
+        article_image = None
         if not direct and detail_requests < MAX_DETAIL_PAGES:
             detail_requests += 1
             try:
                 markup = fetch(item["link"], timeout=DETAIL_FETCH_TIMEOUT)
                 article_available = bool(markup.strip())
+                if article_available and not item.get("image"):
+                    article_image = media.page_og_image(markup, item["link"])
                 direct = find_article_amazon_link(markup) if article_available else None
             except (HTTPError, URLError, TimeoutError, ValueError, OSError):
                 pass
@@ -755,7 +758,7 @@ def candidates(posts, public_history=None):
             "source_only": direct is None,
             "signal": signal, "headline_price": headline_eur,
             "public_baseline": baseline,
-            "image": item.get("image"),
+            "image": item.get("image") or article_image,
         })
     print(
         f"Article lookups: {detail_requests} link checks, "
@@ -788,6 +791,8 @@ def run():
     sent_source_only = 0
     sent_watch = 0
     sent_urgent = 0
+    photo_lookups = 0
+    sent_photos = 0
     today = datetime.now(LOCAL_TZ).date().isoformat()
     stats = meta.setdefault("daily_stats", {})
     counts = stats.setdefault(today, {
@@ -892,10 +897,23 @@ def run():
                 + "Проверь цену, доставку в FR, продавца, состояние товара и график Keepa."
             )
         buttons = alerts.deal_buttons(deal["amazon"], item["link"])
+        photo = media.safe_image_url(deal.get("image"))
+        # Fetch only the ORIGINAL deal article for OG image, never Google Images
+        # or guessed Amazon image/ASIN URLs. Bounded per scan.
+        if not photo and not DRY_RUN and photo_lookups < MAX_PHOTO_LOOKUPS:
+            photo_lookups += 1
+            if dealabs_link(item["link"]):
+                try:
+                    page = fetch(item["link"], timeout=DETAIL_FETCH_TIMEOUT)
+                    photo = media.page_og_image(page, item["link"])
+                except (HTTPError, URLError, TimeoutError, ValueError, OSError):
+                    pass
         if DRY_RUN:
             print(message + "\n---")
         else:
-            telegram_send(message, buttons=buttons)
+            telegram_send(message, buttons=buttons, photo_url=photo)
+            if photo and len(message) <= 875:
+                sent_photos += 1  # attempted via Telegram, photo fallback is supported
             time.sleep(0.4)
         seen[dedupe_key] = deal["discount"]
         if current_headline_price is not None:
@@ -920,7 +938,7 @@ def run():
     print(
         f"Alert types this run: {sent - sent_source_only} direct Amazon; "
         f"{sent_source_only} editorial source-only; {sent_urgent} suspected errors; "
-        f"{sent_watch} price watches."
+        f"{sent_watch} price watches; {sent_photos} photo delivery attempts."
     )
     # Track prices advertised in independently dated PUBLIC RSS announcements.
     # These are NOT observations of current Amazon prices.
