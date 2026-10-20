@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "status": "draft_not_applied_to_running_bot",
+  "store": "amazon.fr",
+  "currency": "EUR",
+  "categories": [
+    "PC components",
+    "gaming peripherals",
+    "consoles and accessories",
+    "video games",
+    "VR and gaming gadgets",
+    "smartphones and Apple devices",
+    "TV and audio",
+    "home appliances",
+    "exceptional deals any category"
+  ],
+  "price_after_discount_eur": {
+    "min": 0,
+    "max": null
+  },
+  "min_real_savings_eur": 0,
+  "min_discount_percent": 50,
+  "priority_discount_percent": 70,
+  "out_of_budget_exception": {
+    "enabled": true,
+    "min_discount_percent": 70,
+    "min_absolute_saving_eur": 100
+  },
+  "preferred_brand_groups": [
+    "Apple",
+    "Sony / PlayStation",
+    "Samsung",
+    "LG",
+    "ASUS / MSI",
+    "Logitech / Razer / Corsair",
+    "Nintendo",
+    "Meta / Valve",
+    "Crucial / WD / Kingston",
+    "JBL / Bose / Sony Audio",
+    "Dyson / Roborock",
+    "Philips / De'Longhi"
+  ],
+  "preferred_brand_policy": "priority_not_hard_exclusion",
+  "exclusions": [
+    "used_or_refurbished",
+    "unreputable_unknown_brands",
+    "suspicious_third_party_sellers"
+  ],
+  "deal_confidence": [
+    "independently_verified",
+    "potential_deal_labeled_unverified"
+  ],
+  "note": "User-selected draft preferences only. Not consumed by bot.py or workflow; notification schedule and thresholds beyond minimum discount are to be confirmed before implementing."
+}
