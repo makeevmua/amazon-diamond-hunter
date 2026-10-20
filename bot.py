@@ -747,11 +747,14 @@ def run():
         raise RuntimeError("Create Telegram bot and set both Actions secrets first.")
     posts, available, requested = collect()
     seen = get_seen()
-    found = candidates(posts)
+    meta = seen.setdefault("__metadata__", {})
+    history = meta.setdefault("public_offer_history", {})
+    found = candidates(posts, history)
     sent = 0
     sent_source_only = 0
+    sent_watch = 0
+    sent_urgent = 0
     today = datetime.now(LOCAL_TZ).date().isoformat()
-    meta = seen.setdefault("__metadata__", {})
     stats = meta.setdefault("daily_stats", {})
     counts = stats.setdefault(today, {
         "scans": 0, "posts_checked": 0, "candidates": 0,
@@ -768,6 +771,10 @@ def run():
         source_only = deal["source_only"]
         if source_only and sent_source_only >= MAX_SOURCE_ALERTS:
             continue
+        if deal["signal"] == "price_watch" and sent_watch >= MAX_PRICE_WATCH:
+            continue
+        if deal["signal"] == "suspected_error" and sent_urgent >= MAX_URGENT:
+            continue
         # Separate keys allow a later verified direct Amazon URL for the same
         # editorial post to be delivered even after a source-only alert.
         dedupe_key = ("source:" + item["key"]) if source_only else deal["amazon"]
@@ -783,15 +790,35 @@ def run():
             f"\nВ объявлении: {pair[1]:.2f} € вместо {pair[2]:.2f} €"
             if pair else ""
         )
-        level = "⚡ ВОЗМОЖНАЯ ЦЕНОВАЯ ОШИБКА" if ERROR_RE.search(deal["title"]) else "💎 КАНДИДАТ НА СКИДКУ"
+        level = (
+            "⚠️ СРОЧНО: ВОЗМОЖНАЯ ОШИБКА ЦЕНЫ"
+            if deal["signal"] == "suspected_error" else
+            "📉 ПАДЕНИЕ ЦЕНЫ ПО ПУБЛИКАЦИЯМ — НЕ ПРОВЕРЕНО"
+            if deal["signal"] == "historical_offer_drop" else
+            "👀 НАБЛЮДЕНИЕ ЗА ЦЕНОЙ"
+            if deal["signal"] == "price_watch" else
+            "💎 КАНДИДАТ НА СКИДКУ"
+        )
+        observed_amount = (f"Цена в заголовке публикации: {deal['headline_price']:.2f} €\n"
+                           if deal["headline_price"] is not None else "")
+        historical = deal["public_baseline"]
+        reference_text = (
+            f"Медиана {historical['previous_posts']} прошлых объявлений: "
+            f"{historical['reference']:.2f} €, отличие {historical['decrease_percent']}%.\n"
+            "Это НЕ история фактических цен Amazon.\n"
+            if historical else ""
+        )
         market = deal["market"] or "Amazon"
         if source_only:
+            claim_line = (f"Заявленная скидка: −{deal['discount']}%\n"
+                          if deal["discount"] > 0 else "Скидка в процентах не указана.\n")
             message = (
-                "🔎 ПЕРСПЕКТИВНАЯ НАХОДКА — НЕПРОВЕРЕНО\n"
+                ("⚠️ СРОЧНО: ЗАЯВЛЕНА ВОЗМОЖНАЯ ОШИБКА ЦЕНЫ\n"
+                 if deal["signal"] == "suspected_error" else
+                 "🔎 ПЕРСПЕКТИВНАЯ НАХОДКА — НЕПРОВЕРЕНО\n")
                 + deal["title"][:170] + "\n\n"
                 + f"Категория: {deal['category']}\n"
-                + f"Заявленная скидка источника: −{deal['discount']}%"
-                + prices + "\n\n"
+                + claim_line + observed_amount + reference_text + prices + "\n\n"
                 + "ПРЯМОЙ ССЫЛКИ AMAZON НЕТ.\n"
                 + "Неизвестно, продаётся ли этот товар на Amazon. "
                 + "Цена, продавец, доставка во Францию и история цен НЕ проверены.\n"
@@ -807,8 +834,10 @@ def run():
                 f"{level} · НЕ ПОДТВЕРЖДЕНО\n"
                 + deal["title"][:170] + "\n\n"
                 + f"Категория: {deal['category']}\n"
-                + f"Заявленная скидка: −{deal['discount']}%" + prices + "\n"
-                + "История цен и цена Amazon: НЕ проверены\n"
+                + (f"Заявленная скидка: −{deal['discount']}%\n"
+                   if deal["discount"] > 0 else "Процент скидки НЕ заявлен.\n")
+                + observed_amount + reference_text + prices + "\n"
+                + "История цен и текущая цена Amazon: НЕ проверены\n"
                 + shipping
                 + f"{market}: {deal['amazon']}\n"
                 + f"Первоисточник: {item['link']}\n\n"
@@ -824,11 +853,42 @@ def run():
             sent_source_only += 1
         else:
             seen["product:" + item["key"]] = deal["discount"]
+        if deal["signal"] == "price_watch":
+            sent_watch += 1
+        if deal["signal"] == "suspected_error":
+            sent_urgent += 1
         sent += 1
         counts["alerts_sent"] += 1
         if sent >= MAX_NOTIFICATIONS:
             break
-    print(f"Alert types this run: {sent - sent_source_only} direct Amazon; {sent_source_only} editorial source-only.")
+    print(
+        f"Alert types this run: {sent - sent_source_only} direct Amazon; "
+        f"{sent_source_only} editorial source-only; {sent_urgent} suspected errors; "
+        f"{sent_watch} price watches."
+    )
+    # Track prices advertised in independently dated PUBLIC RSS announcements.
+    # These are NOT observations of current Amazon prices.
+    if ENABLE_EARLY_DISCOVERY:
+        for item in posts:
+            title = html.unescape(item["title"])
+            price = signals.headline_price(title)
+            if price is None or not fresh_enough(item["pubDate"]):
+                continue
+            if not dealabs_link(item["link"]) or not category_matches(title):
+                continue
+            if EXCLUDE_RE.search(title) or OBVIOUS_NO_NAME.search(title):
+                continue
+            # Avoid spending network calls on unrelated entries or short URLs.
+            combined = item["link"] + " " + item["description"] + " " + item["content"]
+            if "amazon." not in combined.lower():
+                continue
+            direct = find_amazon_link(combined)
+            if direct:
+                signals.record_observation(
+                    history, direct, item["key"], price,
+                    signals.publication_seconds(item["pubDate"])
+                )
+        signals.prune_history(history)
     # Send once per Paris-local day, only during the requested 21:00 hour.
     # Scheduled 19:00 and 20:00 UTC triggers cover summer and winter DST.
     local_time = datetime.now(LOCAL_TZ)
