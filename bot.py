@@ -21,6 +21,8 @@ FEEDS = [
     "https://www.dealabs.com/rss/groupe/consoles-jeux-video",
     "https://www.dealabs.com/rss/groupe/image-son-video",
     "https://www.dealabs.com/rss/groupe/telephonie",
+    "https://www.chollometro.com/rss",
+    "https://quantospendo.app/offerte/feed.xml",
 ]
 RSS_URL = os.getenv("RSS_URL")  # If specified, override all sources for local debugging.
 STATE_FILE = Path(os.getenv("STATE_FILE", "seen.json"))
