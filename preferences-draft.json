@@ -50,7 +50,7 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Production bot reads this file for markets, brand priority and local 21:00 report; remaining constraints like real price history, seller and FR delivery are unverified and displayed as such. Only candidate discovery, not live Amazon monitoring.",
+  "note": "Active best-effort public RSS scout. Core nine categories, brands, exclusions, Amazon FR/ES/IT and local 21:00 report preserved. Four additional categories and interior style keywords intended for matching; claims about seller, current price, delivery or discount history cannot be verified from RSS.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -113,5 +113,111 @@
     "exclude_non_deliverable_to_france": true,
     "warn_about_variant_language_plugs_keyboard_and_warranty_if_relevant": true,
     "avoid_claiming_same_ASIN_or_offer_exists_in_all_marketplaces": true
+  },
+  "additional_categories": [
+    {
+      "id": "interior_design",
+      "name": "Дизайн и интерьер",
+      "min_claimed_discount_percent": 50
+    },
+    {
+      "id": "lego_construction",
+      "name": "LEGO и конструкторы",
+      "min_claimed_discount_percent": 50
+    },
+    {
+      "id": "collectibles",
+      "name": "Коллекционные товары",
+      "min_claimed_discount_percent": 50
+    },
+    {
+      "id": "personal_care",
+      "name": "Уход за собой",
+      "min_claimed_discount_percent": 50
+    }
+  ],
+  "interior_design_profile": {
+    "enabled": true,
+    "name": "Bauhaus / Nordic / Playful Modern / IKEA 1980s–1990s aesthetics",
+    "min_claimed_discount_percent": 50,
+    "styles": [
+      "Bauhaus",
+      "Nordic",
+      "Scandinavian",
+      "modern",
+      "modernist",
+      "IKEA-inspired 1980s and 1990s",
+      "sculptural",
+      "geometric",
+      "minimal clean lines",
+      "playful pop design",
+      "statement pieces",
+      "unusual silhouettes"
+    ],
+    "products": [
+      "chairs",
+      "armchairs",
+      "sofas",
+      "tables",
+      "coffee tables",
+      "side tables",
+      "shelving",
+      "lamps",
+      "floor lamps",
+      "wall lights",
+      "mirrors",
+      "vases",
+      "candles",
+      "candleholders",
+      "ceramics",
+      "tableware",
+      "dishes",
+      "cups",
+      "glasses",
+      "rugs",
+      "carpets",
+      "textiles",
+      "cushions",
+      "throws",
+      "curtains",
+      "storage and organizers",
+      "interior art and decorations"
+    ],
+    "special_interests": [
+      "burger chair",
+      "burger table",
+      "food-shaped furniture",
+      "novelty furniture",
+      "sculptural furniture",
+      "unexpected and playful forms",
+      "memphis design",
+      "space-age design",
+      "80s/90s design aesthetic"
+    ],
+    "search_languages": [
+      "French",
+      "Spanish",
+      "Italian",
+      "English"
+    ],
+    "lower_priority_styles": [
+      "rustic",
+      "farmhouse",
+      "boho",
+      "classic ornate decor",
+      "baroque",
+      "generic mass-market home goods without recognizable design"
+    ],
+    "lower_priority_not_hard_exclusion": true,
+    "condition": "new only; vintage-look designs welcomed but physically used or refurbished items excluded",
+    "note": "RSS keyword/style matching only: no computer vision or verified aesthetic classification, no guarantee a listed item looks like this."
+  },
+  "unexpected_diamond": {
+    "enabled": true,
+    "min_claimed_discount_percent": 80,
+    "allowed_outside_categories": true,
+    "recognizable_brand_required": true,
+    "must_be_clearly_labeled_unverified": true,
+    "note": "Outside selected categories, alert on stated 80%+ reductions for recognizable brands; declared savings are unverified."
   }
 }
