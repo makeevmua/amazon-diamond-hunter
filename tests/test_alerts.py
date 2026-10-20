@@ -41,6 +41,14 @@ class AlertTests(unittest.TestCase):
         )
         self.assertEqual(one["inline_keyboard"][0][0]["text"], "Проверить находку")
 
+    def test_short_brand_names_have_word_boundaries(self):
+        self.assertIsNone(bot.PREFERRED_BRANDS.search("algorithm"))
+        self.assertIsNone(bot.PREFERRED_BRANDS.search("metadata"))
+        self.assertIsNone(bot.PREFERRED_BRANDS.search("helpdesk"))
+        self.assertTrue(bot.PREFERRED_BRANDS.search("LG OLED"))
+        self.assertTrue(bot.PREFERRED_BRANDS.search("HP laptop"))
+        self.assertTrue(bot.PREFERRED_BRANDS.search("De'Longhi coffee machine"))
+
     def test_discount_and_price_based_resend(self):
         self.assertTrue(alerts.meaningful_change(None, 0, None, 100))
         self.assertFalse(alerts.meaningful_change(0, 0, None, 80))
