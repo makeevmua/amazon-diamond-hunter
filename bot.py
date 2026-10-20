@@ -113,9 +113,20 @@ def telegram_send(message):
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID (Actions Secrets)")
     body = urlencode({"chat_id": chat_id, "text": message, "disable_web_page_preview": "true"}).encode()
     req = Request("https://api.telegram.org/bot" + token + "/sendMessage", data=body, method="POST")
-    with urlopen(req, timeout=15) as response:
-        if not json.loads(response.read().decode()).get("ok"):
-            raise RuntimeError("Telegram rejected message")
+    try:
+        with urlopen(req, timeout=15) as response:
+            payload = json.loads(response.read().decode())
+            if not payload.get("ok"):
+                raise RuntimeError("Telegram rejected message: " + str(payload.get("description", "unknown error")))
+    except HTTPError as error:
+        # The API response explains 403/400 without printing the bot token or request URL.
+        try:
+            payload = json.loads(error.read(2048).decode("utf-8", "replace"))
+            description = str(payload.get("description", "unspecified"))
+        except (ValueError, UnicodeError):
+            description = "No readable response from Telegram"
+        description = description.replace(token, "[REDACTED]")
+        raise RuntimeError(f"Telegram API HTTP {error.code}: {description}") from None
 
 def run():
     if not DRY_RUN and (not os.getenv("TELEGRAM_BOT_TOKEN") or not os.getenv("TELEGRAM_CHAT_ID")):
