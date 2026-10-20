@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlsplit, urlencode
 from urllib.request import HTTPRedirectHandler, build_opener
 from urllib.request import Request, urlopen
 from html.parser import HTMLParser
+import signals
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -141,6 +142,10 @@ SURPRISE_DISCOUNT = int(PREF.get("unexpected_diamond", {}).get("min_claimed_disc
 SOURCE_ALERT_SETTINGS = PREF.get("notifications", {}).get("source_only_promising_alerts", {})
 SOURCE_ALERTS_ENABLED = bool(SOURCE_ALERT_SETTINGS.get("enabled", False))
 MAX_SOURCE_ALERTS = max(0, min(3, int(SOURCE_ALERT_SETTINGS.get("maximum_notifications_per_scan", 3))))
+NEW_DISCOVERY = PREF.get("early_discovery", {})
+ENABLE_EARLY_DISCOVERY = bool(NEW_DISCOVERY.get("enabled", False))
+MAX_PRICE_WATCH = max(0, min(2, int(NEW_DISCOVERY.get("max_price_watch_alerts_per_scan", 2))))
+MAX_URGENT = max(0, min(2, int(NEW_DISCOVERY.get("max_urgent_alerts_per_scan", 2))))
 MAX_NOTIFICATIONS = min(8, int(os.getenv("MAX_NOTIFICATIONS", "5")))
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 REPORT_STATUS = os.getenv("REPORT_STATUS", "false").lower() == "true"
@@ -562,7 +567,8 @@ def collect():
     return list(posts.values()), ok_feeds, len(feed_urls)
 
 
-def candidates(posts):
+def candidates(posts, public_history=None):
+    public_history = public_history if isinstance(public_history, dict) else {}
     result = []
     detail_requests = 0
     metadata_requests = 0
@@ -571,6 +577,7 @@ def candidates(posts):
         "stale": 0, "used_or_excluded": 0, "no_category": 0,
         "below_threshold": 0, "no_amazon_product_link": 0,
         "eligible": 0, "editorial_metadata_found": 0,
+        "price_only": 0, "suspected_price_error": 0, "historical_claim": 0,
     }
     unresolved_examples = []
     for item in posts:
@@ -606,6 +613,16 @@ def candidates(posts):
             and reduction >= SURPRISE_DISCOUNT
             and bool(PREFERRED_BRANDS.search(source_text))
         )
+        headline_eur = signals.headline_price(title) if ENABLE_EARLY_DISCOVERY else None
+        explicit_error = bool(signals.ERROR_RE.search(title)) if ENABLE_EARLY_DISCOVERY else False
+        price_watch = bool(
+            ENABLE_EARLY_DISCOVERY and matches and headline_eur is not None
+            and signals.PROMO_RE.search(title)
+            and (PREFERRED_BRANDS.search(title) or
+                 (interior and INTERIOR_STYLE_RE.search(title)))
+        )
+        potential_urgent = bool(explicit_error and headline_eur is not None and
+                                (matches or PREFERRED_BRANDS.search(title)))
         # When the feed omits an explicit percent, inspect only article
         # title/description metadata, never the full page's unrelated sidebar.
         if reduction < minimum and (
@@ -633,7 +650,9 @@ def candidates(posts):
         if not matches and not unexpected:
             counters["no_category"] += 1
             continue
-        if reduction < minimum and not unexpected:
+        if reduction < minimum and not unexpected and not (
+            potential_urgent or price_watch
+        ):
             counters["below_threshold"] += 1
             continue
         # Only trusted editorial pages and exact Amazon FR/ES/IT product URLs.
@@ -651,6 +670,9 @@ def candidates(posts):
                 direct = find_article_amazon_link(markup) if article_available else None
             except (HTTPError, URLError, TimeoutError, ValueError, OSError):
                 pass
+        if not direct and reduction < minimum and not unexpected and not potential_urgent:
+            counters["no_amazon_product_link"] += 1
+            continue
         if not direct:
             rejected_without_direct_link += 1
             counters["no_amazon_product_link"] += 1
@@ -665,6 +687,26 @@ def candidates(posts):
             )
             if not (SOURCE_ALERTS_ENABLED and article_available and fallback_source):
                 continue
+        baseline = None
+        if direct and headline_eur is not None:
+            baseline = signals.reference_drop(
+                public_history.get(direct, []), headline_eur, item["key"],
+                signals.publication_seconds(item["pubDate"])
+            )
+        # A new price-only candidate without an independently observed drop
+        # is strictly a WATCH, never a claimed verified discount.
+        signal = ("suspected_error" if potential_urgent else
+                  "historical_offer_drop" if baseline is not None and reduction < minimum else
+                  "price_watch" if reduction < minimum and not unexpected else
+                  "claimed_discount")
+        if signal == "price_watch" and not direct:
+            continue
+        if signal == "suspected_error":
+            counters["suspected_price_error"] += 1
+        elif signal == "price_watch":
+            counters["price_only"] += 1
+        elif signal == "historical_offer_drop":
+            counters["historical_claim"] += 1
         style_bonus = 15 if interior and INTERIOR_STYLE_RE.search(source_text) else 0
         style_penalty = 10 if interior and LOW_PRIORITY_INTERIOR_RE.search(source_text) else 0
         priority = (
@@ -679,6 +721,8 @@ def candidates(posts):
             "priority": priority, "market": urlsplit(direct).hostname if direct else None,
             "category": ", ".join(matches) if matches else "Unexpected Diamond",
             "source_only": direct is None,
+            "signal": signal, "headline_price": headline_eur,
+            "public_baseline": baseline,
         })
     print(
         f"Article lookups: {detail_requests} link checks, "
@@ -688,8 +732,9 @@ def candidates(posts):
     print("SCAN FUNNEL:", json.dumps(counters, ensure_ascii=False))
     for candidate_title, candidate_url in unresolved_examples:
         print("UNRESOLVED:", repr(candidate_title), candidate_url)
-    # Amazon product URLs always outrank source-only editorial links.
+    # Urgent explicit error claims first, direct products before source-only.
     return sorted(result, key=lambda d: (
+        d["signal"] == "suspected_error",
         not d["source_only"], d["priority"], d["discount"]
     ), reverse=True)
 
