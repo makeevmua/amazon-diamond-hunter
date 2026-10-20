@@ -23,7 +23,18 @@ PROMO_RE = re.compile(
 # The offer price MUST appear in the HEADLINE. Some RSS descriptions include
 # other products, recommended prices or unrelated shipping fees.
 EURO_PRICE_RE = re.compile(
-    r"(?<!\w)(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:€|euros?\b|EUR\b)",
+    r"(?<![\w.,])("
+    r"\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?:[,.]\d{1,2})?|"
+    r"\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|"
+    r"\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|"
+    r"\d{1,5}(?:[.,]\d{1,2})?"
+    r")\s*(?:€|euros?\b|EUR\b)", re.I
+)
+CREDIT_CONTEXT_RE = re.compile(
+    r"(?:sur\s+(?:la\s+)?carte\s+(?:de\s+)?fid[eé]lit[eé]|"
+    r"en\s+(?:bon|carte)\s+d['’]achat|"
+    r"store\s+credit|gift\s+card|cashback|"
+    r"carte\s+cadeau|saldo\s+regalo|vale\s+de\s+compra)",
     re.I,
 )
 MIN_OBSERVATION_AGE_SECONDS = 12 * 3600
@@ -33,10 +44,36 @@ MIN_DROP_PCT = 40.0
 
 def headline_price(title):
     """One unambiguous EUR price in the headline; never infer from identifiers."""
-    matches = [float(v.replace(",", ".")) for v in EURO_PRICE_RE.findall(title)]
-    matches = [v for v in matches if 5 <= v <= 50000]
-    # Two+ prices in a headline may be an old/current comparison or variants.
-    # The existing explicit price_pair parser handles real before/after pairs.
+    matches = []
+    for match in EURO_PRICE_RE.finditer(title):
+        raw = match.group(1).replace(" ", "").replace("\u00a0", "").replace("\u202f", "")
+        # "1 599,00", "1.599,00", "1,599.00" and "1599.00"
+        # use different locale conventions; normalize only when unambiguous.
+        if "." in raw and "," in raw:
+            raw = (raw.replace(".", "").replace(",", ".")
+                   if raw.rfind(",") > raw.rfind(".") else
+                   raw.replace(",", ""))
+        elif raw.count(".") == 1 and len(raw.split(".")[-1]) == 3:
+            raw = raw.replace(".", "")
+        elif raw.count(",") == 1 and len(raw.split(",")[-1]) == 3:
+            raw = raw.replace(",", "")
+        elif raw.count(".") > 1:
+            raw = raw.replace(".", "")
+        elif raw.count(",") > 1:
+            raw = raw.replace(",", "")
+        else:
+            raw = raw.replace(",", ".")
+        try:
+            price = float(raw)
+        except ValueError:
+            continue
+        suffix = title[match.end():match.end() + 55]
+        if CREDIT_CONTEXT_RE.search(suffix):
+            continue
+        if 5 <= price <= 50000:
+            matches.append(price)
+    # Multi-price headlines may represent different variants, credit and
+    # before/after numbers. Never pick one by guesswork.
     return round(matches[0], 2) if len(matches) == 1 else None
 
 
