@@ -518,17 +518,26 @@ def collect():
 def candidates(posts):
     result = []
     detail_requests = 0
+    metadata_requests = 0
     rejected_without_direct_link = 0
+    counters = {
+        "stale": 0, "used_or_excluded": 0, "no_category": 0,
+        "below_threshold": 0, "no_amazon_product_link": 0,
+        "eligible": 0, "editorial_metadata_found": 0,
+    }
+    unresolved_examples = []
     for item in posts:
         title = html.unescape(item["title"])
         desc = item["description"]
         if not fresh_enough(item["pubDate"]):
+            counters["stale"] += 1
             continue
         claimed_percent = percent(title, desc)
         pair = price_pair(title + " " + desc)
         reduction = max(claimed_percent or 0, pair[0] if pair else 0)
         source_text = title + " " + desc[:700]
         if EXCLUDE_RE.search(source_text) or OBVIOUS_NO_NAME.search(source_text):
+            counters["used_or_excluded"] += 1
             continue
         matches = category_matches(source_text)
         interior = "design & interior" in matches
@@ -540,12 +549,39 @@ def candidates(posts):
             and reduction >= SURPRISE_DISCOUNT
             and bool(PREFERRED_BRANDS.search(source_text))
         )
-        if reduction < minimum and not unexpected:
-            continue
+        # When the feed omits an explicit percent, inspect only article
+        # title/description metadata, never the full page's unrelated sidebar.
+        if reduction < minimum and (
+            matches or (PREFERRED_BRANDS.search(source_text) and
+                        PREF.get("unexpected_diamond", {}).get("enabled", False))
+        ) and PROMO_HINT_RE.search(source_text) and metadata_requests < MAX_META_DISCOVERY_PAGES:
+            metadata_requests += 1
+            try:
+                snippet = article_metadata(fetch(item["link"], timeout=DETAIL_FETCH_TIMEOUT))
+                claimed_meta = percent(snippet, "")
+                pair_meta = price_pair(snippet)
+                improved = max(claimed_meta or 0, pair_meta[0] if pair_meta else 0)
+                if improved > reduction:
+                    reduction = improved
+                    pair = pair_meta if pair_meta and improved == pair_meta[0] else pair
+                    counters["editorial_metadata_found"] += 1
+            except (HTTPError, URLError, TimeoutError, ValueError, OSError):
+                pass
+        unexpected = (
+            not matches
+            and PREF.get("unexpected_diamond", {}).get("enabled", False)
+            and reduction >= SURPRISE_DISCOUNT
+            and bool(PREFERRED_BRANDS.search(source_text))
+        )
         if not matches and not unexpected:
+            counters["no_category"] += 1
+            continue
+        if reduction < minimum and not unexpected:
+            counters["below_threshold"] += 1
             continue
         # Only trusted Dealabs source links, and Amazon.fr direct product ASIN.
         if not dealabs_link(item["link"]):
+            counters["no_category"] += 1
             continue
         direct = find_amazon_link(
             item["link"] + " " + item["title"] + " " + desc + " " + item["content"]
@@ -562,6 +598,9 @@ def candidates(posts):
                 pass
         if not direct:
             rejected_without_direct_link += 1
+            counters["no_amazon_product_link"] += 1
+            if len(unresolved_examples) < 3:
+                unresolved_examples.append((title[:110], item["link"][:180]))
             continue
         style_bonus = 15 if interior and INTERIOR_STYLE_RE.search(source_text) else 0
         style_penalty = 10 if interior and LOW_PRIORITY_INTERIOR_RE.search(source_text) else 0
@@ -570,6 +609,7 @@ def candidates(posts):
             + 12 * bool(PREFERRED_BRANDS.search(title))
             + style_bonus - style_penalty
         )
+        counters["eligible"] += 1
         result.append({
             "item": item, "title": title, "amazon": direct,
             "discount": reduction, "pair": pair,
@@ -577,9 +617,13 @@ def candidates(posts):
             "category": ", ".join(matches) if matches else "Unexpected Diamond",
         })
     print(
-        f"Link extraction: {detail_requests} article page(s) checked; "
-        f"{rejected_without_direct_link} qualifying announcement(s) had no verified direct Amazon product URL."
+        f"Article lookups: {detail_requests} link checks, "
+        f"{metadata_requests} metadata checks. "
+        f"Rejected {rejected_without_direct_link} qualifying offers without a direct Amazon URL."
     )
+    print("SCAN FUNNEL:", json.dumps(counters, ensure_ascii=False))
+    for candidate_title, candidate_url in unresolved_examples:
+        print("UNRESOLVED:", repr(candidate_title), candidate_url)
     return sorted(result, key=lambda d: (d["priority"], d["discount"]), reverse=True)
 
 
