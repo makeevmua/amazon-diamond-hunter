@@ -8,6 +8,7 @@ import html
 import json
 import re
 import sqlite3
+import media
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -193,11 +194,20 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
         if target:
             links += f' · <a href="{target}" target="_blank" rel="noopener">Amazon</a>'
         scope = "Сравнение магазинов" if row["price_scope"] == "mixed_merchants_unverified" else "Цена не проверена"
+        photo = media.safe_image_url(row["image_url"])
+        image = ('<img loading="lazy" width="72" height="72" alt="Фото публикации" '
+                 'src="' + html.escape(photo, quote=True) + '">'
+                 if photo else '<span class="no-photo">Нет фото</span>')
+        state = html.escape(row["state"], quote=True)
         content.append(
-            '<tr><td><b>' + name + '</b><small>' + html.escape(row["source"]) +
-            '</small></td><td>' + cat + '</td><td>' + price + '</td><td>' +
-            claimed + '</td><td>' + html.escape(row["state"]) +
-            '<small>' + scope + '</small></td><td>' + links + '</td></tr>')
+            '<tr data-category="' + html.escape(row["category"], quote=True) +
+            '" data-status="' + state + '" data-claim="' +
+            str(int(row["claimed_discount"])) + '"><td><div class="product">' +
+            image + '<div><b>' + name + '</b><small>' +
+            html.escape(row["source"]) + '</small></div></div></td><td>' +
+            cat + '</td><td>' + price + '</td><td>' + claimed +
+            '</td><td>' + state + '<small>' + scope +
+            '</small></td><td>' + links + '</td></tr>')
     template = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Diamond Hunter — База находок</title>
@@ -207,8 +217,14 @@ body{max-width:1320px;margin:auto;padding:28px 16px}
 h1{font-size:clamp(25px,4vw,42px);margin:4px 0 8px}
 p{color:#b8c5d9;line-height:1.5}
 section{background:#182338;border:1px solid #2a3852;border-radius:18px;padding:16px}
-input{background:#0c1220;color:white;padding:13px 15px;border-radius:10px;
-width:min(96%,520px);border:1px solid #576984;font-size:16px}
+input,select{background:#0c1220;color:white;padding:13px 15px;border-radius:10px;
+border:1px solid #576984;font-size:16px}
+input{width:min(96%,520px)}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.product{display:flex;gap:12px;align-items:center;min-width:280px}
+.product img,.no-photo{border-radius:12px;width:72px;height:72px;object-fit:cover;
+background:#253049;flex-shrink:0}
+.no-photo{display:flex;align-items:center;justify-content:center;color:#94a6c1;font-size:11px}
 table{border-collapse:collapse;width:100%;font-size:14px}
 td,th{text-align:left;border-bottom:1px solid #2f3b51;padding:13px 8px;vertical-align:top}
 th{color:#98bafa}tr:hover{background:#223049}small{display:block;color:#90a4c0;margin-top:5px}
@@ -218,8 +234,19 @@ a{color:#9abfff}a:hover{color:white}
 <p>Всего сохранено: COUNT. В таблице показаны последние MAXROWS публикаций.
 Это предложения из открытых источников, а не проверенные актуальные цены Amazon.
 США и Великобритания исключены. Скидки сравнения магазинов не относятся автоматически к Amazon.</p></header>
-<section><input id="search" placeholder="Поиск: LEGO, Bauhaus, Samsung, источник…"
-aria-label="Поиск по базе"><p id="counter">Загружено строк: MAXROWS</p>
+<section><div class="toolbar">
+<input id="search" placeholder="Поиск: LEGO, Bauhaus, Samsung, источник…"
+aria-label="Поиск по базе">
+<select id="category" aria-label="Фильтр по категории"><option value="">Все категории</option></select>
+<select id="status" aria-label="Статус проверки">
+<option value="">Все находки</option>
+<option value="ready_for_alert">Есть ссылка Amazon</option>
+<option value="watchlist">Наблюдение</option>
+<option value="editorial_review">Нужно проверить источник</option>
+</select>
+<select id="sorting" aria-label="Сортировка"><option value="new">Сначала новые</option>
+<option value="discount">По заявленной скидке</option></select>
+</div><p id="counter">Загружено строк: MAXROWS</p>
 <div class="scroller"><table><thead><tr><th>Товар</th><th>Категория</th>
 <th>Заявленная цена</th><th>Скидка</th><th>Статус</th><th>Ссылки</th>
 </tr></thead><tbody id="results">ROWS</tbody></table></div></section>
@@ -227,12 +254,32 @@ aria-label="Поиск по базе"><p id="counter">Загружено стр�
 могли устареть, наличие и доставка во Францию не проверены.</footer>
 <script>
 const rows=[...document.querySelectorAll('#results tr')];
-document.getElementById('search').addEventListener('input',ev=>{
-let q=ev.target.value.trim().toLocaleLowerCase(), count=0;
-for(let row of rows){let match=row.textContent.toLocaleLowerCase().includes(q);
-row.hidden=!match;if(match)count++}
+const cat=document.getElementById('category');
+const choices=[...new Set(rows.flatMap(r=>r.dataset.category.split(', ')))].sort();
+for(const choice of choices){const option=document.createElement('option');
+option.value=choice;option.textContent=choice;cat.appendChild(option)}
+const search=document.getElementById('search'),status=document.getElementById('status');
+const tbody=document.getElementById('results');
+function update(){
+const q=search.value.trim().toLocaleLowerCase(),c=cat.value,st=status.value;
+let count=0;
+for(const row of rows){
+let match=row.textContent.toLocaleLowerCase().includes(q) &&
+(!c||row.dataset.category.split(', ').includes(c)) &&
+(!st||row.dataset.status===st);
+row.hidden=!match;if(match)count++;
+}
 document.getElementById('counter').textContent='Найдено в таблице: '+count;
-});
+}
+function sortRows(){
+let sorted=document.getElementById('sorting').value==='discount'?
+[...rows].sort((a,b)=>Number(b.dataset.claim)-Number(a.dataset.claim)):rows;
+for(const row of sorted)tbody.appendChild(row);
+}
+search.addEventListener('input',update);
+cat.addEventListener('change',update);
+status.addEventListener('change',update);
+document.getElementById('sorting').addEventListener('change',sortRows);
 </script></body></html>"""
     html_out = template.replace("COUNT", str(total)).replace(
         "MAXROWS", str(len(rows))).replace("ROWS", "\n".join(content))
