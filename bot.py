@@ -641,7 +641,7 @@ def candidates(posts, public_history=None):
         if reduction < minimum and (
             matches or (PREFERRED_BRANDS.search(source_text) and
                         PREF.get("unexpected_diamond", {}).get("enabled", False))
-        ) and PROMO_HINT_RE.search(source_text) and metadata_requests < MAX_META_DISCOVERY_PAGES:
+        ) and not (price_watch or potential_urgent or history_comparison) and PROMO_HINT_RE.search(source_text) and metadata_requests < MAX_META_DISCOVERY_PAGES:
             metadata_requests += 1
             try:
                 snippet = article_metadata(fetch(item["link"], timeout=DETAIL_FETCH_TIMEOUT))
