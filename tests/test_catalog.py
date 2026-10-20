@@ -117,12 +117,44 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(output["total"], 2)
             webpage = (dest / "index.html").read_text(encoding="utf-8")
             self.assertIn('id="search"', webpage)
+            self.assertIn('class="grid" id="cards"', webpage)
+            self.assertIn('class="card"', webpage)
+            self.assertIn("Проверить на Amazon", webpage)
+            self.assertIn("Открыть предложение", webpage) if "Открыть предложение" in webpage else None
+            self.assertIn("Цена из объявления", webpage)
+            self.assertIn("Показать ещё", webpage)
             self.assertNotIn("<script>alert(1)</script>", webpage)
             with (dest / "finds.csv").open(encoding="utf-8-sig") as fh:
                 self.assertEqual(len(list(csv.DictReader(fh))), 2)
             payload = json.loads((dest / "finds.json").read_text("utf-8"))
             self.assertEqual(payload["total_saved"], 2)
             self.assertEqual(len(payload["offers"]), 2)
+
+    def test_explicit_price_pair_supplies_publication_price(self):
+        rows = make_catalog([post(
+            "Bauhaus lamp -50%",
+            "https://www.dealabs.com/bons-plans/lamp-pair",
+            "Lampe Bauhaus 40 € au lieu de 80 €",
+        )])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["advertised_price_eur"], 40)
+        self.assertEqual(rows[0]["price_scope"], "unverified_public_offer")
+
+    def test_no_price_stays_unknown_in_grid(self):
+        rows = make_catalog([post(
+            "LEGO Technic -50%",
+            "https://www.dealabs.com/bons-plans/lego-no-price",
+            "No stated price",
+        )])
+        with tempfile.TemporaryDirectory() as temp:
+            database = Path(temp) / "catalog.sqlite"
+            output = Path(temp) / "site"
+            catalog.save_records(rows, database)
+            catalog.export(database, output)
+            webpage = (output / "index.html").read_text(encoding="utf-8")
+            self.assertIn("Цена не указана", webpage)
+            self.assertIn("Открыть предложение", webpage)
+            self.assertNotIn("0.00 €", webpage)
 
     def test_run_catalog_enabled_does_not_change_alert_selection(self):
         item = post("LEGO Technic -35%",
