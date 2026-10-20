@@ -50,7 +50,7 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Running best-effort FR/ES/IT deal search. US and UK sources excluded. Original-source imagery supported with text fallback. Advertised discounts, delivery to France, merchant, actual Amazon price and item-photo identity are NOT verified.",
+  "note": "Extended 16-feed FR/ES/IT free RSS scanner with persistent SQLite finds database, 3-day GitHub artifact downloads, searchable HTML/CSV/JSON. Separate Telegram alerts retain original 25% interior, 50% other and 80% unusual thresholds. Public headline prices, multi-merchant comparisons and availability are NOT verified live Amazon prices.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -325,5 +325,30 @@
       "pan-European feeds containing unwanted countries"
     ],
     "note": "RSS discovery only, not complete live Amazon catalog coverage. Each feed can be empty or unavailable."
+  },
+  "findings_database": {
+    "enabled": true,
+    "type": "SQLite offer publication catalog",
+    "persistent_via": "GitHub Actions best-effort cache (catalog.sqlite)",
+    "export_every_run": "GitHub Actions artifact with index.html, finds.csv, finds.json, catalog.sqlite",
+    "max_publications": 6000,
+    "days_kept": 60,
+    "exported_latest_rows": 1500,
+    "free_artifact_retention_days": 3,
+    "includes_below_telegram_threshold": true,
+    "watchlist_does_not_send_notifications": true,
+    "supported_markets": [
+      "amazon.fr",
+      "amazon.es",
+      "amazon.it"
+    ],
+    "excluded_markets": [
+      "amazon.com",
+      "amazon.co.uk"
+    ],
+    "confidence_rule": "Public advertisements only; no actual Amazon price, price history, seller or France delivery verification",
+    "source_price_ambiguity": "Les Numeriques may compare several merchants: article's lowest reported price is never attributed to Amazon automatically.",
+    "user_access": "Open the GitHub Actions workflow run and download diamond-findings-<run_id> from Artifacts, then open catalog_export/index.html.",
+    "note": "Archive persists across scheduled runs while GitHub Actions cache is available. GitHub cache and downloadable artifacts have retention limits and are not permanent external storage."
   }
 }
