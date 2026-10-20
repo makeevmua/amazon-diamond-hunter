@@ -301,6 +301,37 @@ def find_amazon_link(text):
     return None
 
 
+def find_article_amazon_link(markup):
+    """Avoid attributing a related product in a sidebar to the advertised offer.
+
+    An article with multiple distinct Amazon ASIN URLs is too ambiguous to
+    send as a single direct deal. Never synthesize an ASIN from product names.
+    """
+    cleaned = str(markup)
+    for _ in range(3):
+        cleaned = html.unescape(unquote(cleaned)).replace("\\/", "/")
+    direct_links = set()
+    for match in AMAZON_EMBEDDED_RE.finditer(cleaned):
+        direct = amazon_link(match.group(0))
+        if direct:
+            direct_links.add(direct)
+            if len(direct_links) > 1:
+                return None
+    if len(direct_links) == 1:
+        return next(iter(direct_links))
+    # If only a short URL is present, require just one distinct target.
+    short_links = []
+    for url in URL_RE.findall(cleaned):
+        try:
+            if urlsplit(url).hostname in SHORTLINK_HOSTS:
+                short_links.append(url)
+        except ValueError:
+            pass
+    if len(set(short_links)) == 1:
+        return resolve_shortlink(short_links[0].rstrip(".,;)\\]"))
+    return None
+
+
 def parse_feed(text):
     root = ET.fromstring(text)
     items = []
@@ -532,6 +563,9 @@ def candidates(posts):
         if not fresh_enough(item["pubDate"]):
             counters["stale"] += 1
             continue
+        if not dealabs_link(item["link"]):
+            counters["no_category"] += 1
+            continue
         claimed_percent = percent(title, desc)
         pair = price_pair(title + " " + desc)
         reduction = max(claimed_percent or 0, pair[0] if pair else 0)
@@ -579,10 +613,7 @@ def candidates(posts):
         if reduction < minimum and not unexpected:
             counters["below_threshold"] += 1
             continue
-        # Only trusted Dealabs source links, and Amazon.fr direct product ASIN.
-        if not dealabs_link(item["link"]):
-            counters["no_category"] += 1
-            continue
+        # Only trusted editorial pages and exact Amazon FR/ES/IT product URLs.
         direct = find_amazon_link(
             item["link"] + " " + item["title"] + " " + desc + " " + item["content"]
         )
@@ -591,7 +622,7 @@ def candidates(posts):
         if not direct and detail_requests < MAX_DETAIL_PAGES:
             detail_requests += 1
             try:
-                direct = find_amazon_link(
+                direct = find_article_amazon_link(
                     fetch(item["link"], timeout=DETAIL_FETCH_TIMEOUT)
                 )
             except (HTTPError, URLError, TimeoutError, ValueError, OSError):
