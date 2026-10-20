@@ -50,7 +50,7 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Enabled: interior design 25% claimed, other chosen categories 50%, unexpected recognized-brand deals 80%. Free public RSS discovery only; prices and delivery to France are NOT verified. New sources/shortlinks may be limited by network availability.",
+  "note": "Active free public-RSS collector. Source-only promising finds for Dealabs/Les Numériques enabled with 3-per-scan cap; no Amazon product URL is inferred. Interior claimed 25%, other categories 50%, out-of-category recognized brand 80%. Seller, shipping, current price and price history unverified.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -83,6 +83,26 @@
       "include_zero_findings": true,
       "include": "number_of_posts_scanned, new_candidates, confirmed_deals_if_any, notable_offers and source/verification caveats",
       "note": "Daily report generated from cached RSS scan counts. GitHub Actions scheduling is not exact, may be delayed or missed."
+    },
+    "source_only_promising_alerts": {
+      "enabled": true,
+      "name": "Перспективная находка",
+      "source_domains": [
+        "dealabs.com",
+        "lesnumeriques.com"
+      ],
+      "require_successful_source_page_fetch": true,
+      "require_discount_thresholds": true,
+      "min_interior_claimed_discount_percent": 25,
+      "min_other_categories_claimed_discount_percent": 50,
+      "min_unexpected_brand_claimed_discount_percent": 80,
+      "maximum_notifications_per_scan": 3,
+      "direct_amazon_product_alerts_take_priority": true,
+      "persistent_dedupe": true,
+      "clearly_mark_no_direct_amazon_url": true,
+      "warn_unverified_amazon_seller_price_history_shipping": true,
+      "message_includes_source_link_only": true,
+      "note": "Source-only informational alert. An editorial offer page may point to a merchant other than Amazon; user must check merchant, live price, delivery and whether the offer is even on Amazon. No guarantee source discount is genuine."
     }
   },
   "markets": [
