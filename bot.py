@@ -206,6 +206,10 @@ AMAZON_EMBEDDED_RE = re.compile(
     r"https?://(?:www\.|smile\.)?amazon\.(?:fr|es|it)/[^\s\"'<>]+", re.I
 )
 SHORTLINK_HOSTS = {"amzn.eu", "amzn.to", "a.co"}
+BRICKSET_ROUNDUP_RE = re.compile(
+    r"^(?:discounts?|deals?|offers?|promotions?)\s+(?:at|on|from)\s+amazon\.(?:fr|es|it)\b",
+    re.I,
+)
 FASHION_TITLE_RE = re.compile(
     r"\b(pull|sweatshirt|robe|chemise|t.shirt|pantalon|"
     r"jupe|veste|jeans|chaussures?|baskets?|sneakers?|"
@@ -632,6 +636,13 @@ def candidates(posts, public_history=None):
     for item in posts:
         title = html.unescape(item["title"])
         desc = item["description"]
+        # Brickset's "Discounts at Amazon.es" RSS entries are multi-product
+        # roundups, not an individual deal. Percentages and ASINs can belong
+        # to DIFFERENT items. Never send the roundup as one discounted product.
+        if "brickset.com" in item["link"].lower() and BRICKSET_ROUNDUP_RE.search(title):
+            counters.setdefault("multi_product_roundups_skipped", 0)
+            counters["multi_product_roundups_skipped"] += 1
+            continue
         if not fresh_enough(item["pubDate"]):
             counters["stale"] += 1
             continue
@@ -641,7 +652,10 @@ def candidates(posts, public_history=None):
         claimed_percent = percent(title, desc)
         pair = price_pair(title + " " + desc)
         reduction = max(claimed_percent or 0, pair[0] if pair else 0)
-        source_text = title + " " + desc[:700]
+        # Strip HTML tags before category matching; otherwise <table>
+        # markup was being misread as "table furniture".
+        plain_description = html.unescape(re.sub(r"<[^>]*>", " ", desc))
+        source_text = title + " " + plain_description[:700]
         if EXCLUDE_RE.search(source_text) or OBVIOUS_NO_NAME.search(source_text):
             counters["used_or_excluded"] += 1
             continue
@@ -816,6 +830,17 @@ def run():
     history = meta.setdefault("public_offer_history", {})
     notified_prices = meta.setdefault("notified_offer_prices", {})
     found = candidates(posts, history)
+    if DRY_RUN:
+        for deal in found[:40]:
+            print("SCAN CANDIDATE:", json.dumps({
+                "title": deal["title"][:160],
+                "category": deal["category"],
+                "claimed_discount": deal["discount"],
+                "market": deal["market"],
+                "amazon": deal["amazon"],
+                "source": deal["item"]["link"],
+                "unverified": True,
+            }, ensure_ascii=False))
     sent = 0
     sent_source_only = 0
     sent_watch = 0
