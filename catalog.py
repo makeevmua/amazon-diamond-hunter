@@ -175,7 +175,9 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
         rows = [dict(row) for row in db.execute(
             "SELECT * FROM offers ORDER BY last_seen DESC LIMIT 1500")]
         total = db.execute("SELECT count(*) FROM offers").fetchone()[0]
+    latest_export = datetime.now(timezone.utc).isoformat(timespec="seconds")
     payload = {
+        "exported_at": latest_export,
         "note": "Public advertisements only. NOT verified Amazon prices, sellers or delivery.",
         "sources": "France, Spain, Italy (no US/UK)",
         "total_saved": total, "exported": len(rows),
@@ -301,7 +303,7 @@ footer a{color:#e7c681}
 <input id="search" type="search" placeholder="Найти LEGO, Bauhaus, Dyson…" aria-label="Поиск">
 <select id="category" aria-label="Фильтр категорий"><option value="">Все категории</option></select>
 <select id="status" aria-label="Фильтр ссылок"><option value="">Все ссылки</option><option value="ready_for_alert">Есть карточка Amazon</option><option value="watchlist">Список наблюдения</option><option value="editorial_review">Редакционные находки</option></select>
-<select id="sort" aria-label="Сортировка"><option value="new">Новые находки</option><option value="discount">Максимальная скидка</option><option value="cheap">Сначала дешевле</option></select>
+<select id="sort" aria-label="Сортировка"><option value="priced" selected>Сначала с ценой</option><option value="new">Новые находки</option><option value="discount">Максимальная скидка</option><option value="cheap">Сначала дешевле</option></select>
 </div>
 <div class="tabs"><div class="tablist"><button class="active" type="button" data-tab="all">Все</button><button type="button" data-tab="amazon">С Amazon</button><button type="button" data-tab="priced">С ценой</button><button type="button" data-tab="review">На проверку</button></div><span id="counter">Загрузка…</span></div>
 <div class="grid" id="cards">ROWS</div>
@@ -309,7 +311,7 @@ footer a{color:#e7c681}
 <button id="more" hidden type="button">Показать ещё ↓</button>
 <aside class="note"><b>Важно:</b> цифры и проценты на этой странице — заявления из сторонних публикаций, не проверенные текущие цены Amazon. В редакционных статьях может сравниваться несколько магазинов, как в случае Samsung S26+ и Joybuy. Даже если есть ссылка на Amazon, цена статьи может отличаться от выбранной версии товара. Кнопка «Проверить на Amazon» не оформляет покупку.</aside>
 </main></div>
-<footer class="wrap"><span>Diamond Hunter · автоматическая публикация после сканирований</span><div><a href="finds.csv" download>CSV</a> · <a href="finds.json" download>JSON</a></div></footer>
+<footer class="wrap"><span>Diamond Hunter · обновлено LAST_UPDATED · автоматически после сканирований</span><div><a href="finds.csv" download>CSV</a> · <a href="finds.json" download>JSON</a></div></footer>
 <script>
 "use strict";
 const cards=[...document.querySelectorAll("#cards .card")];
@@ -330,6 +332,7 @@ const filter=()=>{
 const q=search.value.trim().toLocaleLowerCase(),cat=category.value,st=status.value;
 const visible=cards.filter(el=>(!q||el.textContent.toLocaleLowerCase().includes(q))&&(!cat||el.dataset.category.split(", ").includes(cat))&&(!st||el.dataset.status===st)&&
 (mode!=="amazon"||el.dataset.status==="ready_for_alert")&&(mode!=="priced"||el.dataset.price!=="")&&(mode!=="review"||el.dataset.status==="editorial_review"));
+if(sort.value==="priced")visible.sort((a,b)=>Number(b.dataset.price!=="")-Number(a.dataset.price!==""));
 if(sort.value==="discount")visible.sort((a,b)=>Number(b.dataset.claim)-Number(a.dataset.claim));
 if(sort.value==="cheap")visible.sort((a,b)=>(a.dataset.price===""?Infinity:Number(a.dataset.price))-(b.dataset.price===""?Infinity:Number(b.dataset.price)));
 for(const el of visible)wrap.append(el);
@@ -342,8 +345,22 @@ for(const el of [search,category,status,sort])el.addEventListener(el===search?"i
 for(const b of document.querySelectorAll("[data-tab]"))b.addEventListener("click",()=>{mode=b.dataset.tab;limit=48;for(const t of document.querySelectorAll("[data-tab]"))t.classList.toggle("active",t===b);filter()});
 document.getElementById("more").addEventListener("click",()=>{limit+=48;filter()});
 filter();
+// Refresh an open, idle storefront only after the published data changes.
+setInterval(async()=>{
+ if(document.hidden||search.value||category.value||status.value||window.scrollY>200)return;
+ try{
+  const response=await fetch("finds.json?v="+Date.now(),{cache:"no-store"});
+  if(!response.ok)return;
+  const newData=await response.json();
+  if(newData.exported_at&&newData.exported_at!=="LAST_EXPORT")location.reload();
+ }catch(e){/* Offline local preview: no network required. */}
+},300000);
 </script></body></html>"""
-    html_out = template.replace("COUNT", str(total)).replace(
-        "MAXROWS", str(len(rows))).replace("ROWS", "\n".join(content))
+    formatted_updated = datetime.fromisoformat(latest_export).strftime("%d.%m.%Y %H:%M UTC")
+    html_out = (template.replace("COUNT", str(total))
+                .replace("MAXROWS", str(len(rows)))
+                .replace("LAST_UPDATED", formatted_updated)
+                .replace("LAST_EXPORT", latest_export)
+                .replace("ROWS", "\n".join(content)))
     (directory / "index.html").write_text(html_out, encoding="utf-8")
     return {"total": total, "exported": len(rows), "path": str(directory)}
