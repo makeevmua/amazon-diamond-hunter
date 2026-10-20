@@ -63,8 +63,64 @@ class DiamondTests(unittest.TestCase):
 
     def test_percentage_below_threshold(self):
         self.assertEqual(bot.percent("Samsung -72%", ""), 72)
-        self.assertIsNone(bot.percent("Samsung -40%", ""))
+        self.assertEqual(bot.percent("Samsung -40%", ""), 40)
+        self.assertIsNone(bot.percent("Samsung -20%", ""))
         self.assertIsNone(bot.percent("Samsung jusqu'à -70%", ""))
+
+    def test_interior_discount_from_25_others_still_50(self):
+        interior = post("Lampe Bauhaus -30%",
+                        "https://www.dealabs.com/bons-plans/lampe",
+                        "https://www.amazon.fr/dp/B0B9C4DKKG",
+                        key="int-30")
+        tech = post("Samsung SSD -30%",
+                    "https://www.dealabs.com/bons-plans/ssd-low",
+                    "https://www.amazon.fr/dp/B0B9C4DKKH",
+                    key="tech-30")
+        interior_below = post("Vase Bauhaus -24%",
+                              "https://www.dealabs.com/bons-plans/vase",
+                              "https://www.amazon.fr/dp/B0B9C4DKKJ",
+                              key="int-24")
+        with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
+            found = bot.candidates([interior, tech, interior_below])
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["discount"], 30)
+        self.assertIn("design & interior", found[0]["category"])
+
+    def test_multilingual_discount_and_price_pair(self):
+        self.assertEqual(bot.percent("Lámpara descuento del 29%", ""), 29)
+        self.assertEqual(bot.percent("Lampada sconto del 28%", ""), 28)
+        self.assertEqual(bot.percent("Nordic lampe 25% off", ""), 25)
+        self.assertEqual(bot.price_pair("75 € au lieu de 100 €"),
+                         (25, 75.0, 100.0))
+
+    def test_encoded_amazon_links_and_short_link_resolution(self):
+        encoded = "https://www.dealabs.com/goto?u=https%3A%2F%2Fwww.amazon.it%2Fdp%2FB0B9C4DKKG"
+        self.assertEqual(bot.find_amazon_link(encoded),
+                         "https://amazon.it/dp/B0B9C4DKKG")
+        with patch.object(bot, "resolve_shortlink", return_value="https://amazon.es/dp/B0B9C4DKKG") as resolve:
+            self.assertEqual(bot.find_amazon_link("https://amzn.eu/d/testabc"),
+                             "https://amazon.es/dp/B0B9C4DKKG")
+            resolve.assert_called_once()
+        self.assertFalse(bot.allowed_redirect_url("https://localhost/private"))
+        self.assertFalse(bot.allowed_redirect_url("https://amazon.fr.evil.com/dp/B0B9C4DKKG"))
+        self.assertTrue(bot.allowed_redirect_url("https://amzn.eu/d/x"))
+
+    def test_rss_attribute_and_atom_links(self):
+        rss = """<rss><channel><item><title>Bauhaus lamp -30%</title>
+        <link>https://www.dealabs.com/bons-plans/house</link>
+        <enclosure url="https://www.amazon.fr/dp/B0B9C4DKKG" />
+        </item></channel></rss>"""
+        feed = bot.parse_feed(rss)
+        self.assertIn("https://www.amazon.fr/dp/B0B9C4DKKG", feed[0]["content"])
+        atom = """<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+        <title>Bauhaus lamp -30%</title><link href="https://www.dealabs.com/bons-plans/x" />
+        <id>example-1</id></entry></feed>"""
+        data = bot.parse_feed(atom)
+        self.assertEqual(data[0]["key"], "example-1")
+        self.assertEqual(data[0]["link"], "https://www.dealabs.com/bons-plans/x")
+
+    def test_editorial_source_trusted(self):
+        self.assertTrue(bot.dealabs_link("https://www.lesnumeriques.com/soldes/bon-plan.html"))
 
     def test_crossborder_candidate_with_disclosed_market(self):
         item = post("Samsung smartphone -70%",
