@@ -153,7 +153,16 @@ class DiamondTests(unittest.TestCase):
         self.assertEqual(bot.find_article_amazon_link(single),
                          "https://amazon.es/dp/B0B9C4DKKG")
 
-    def test_untrusted_article_not_fetched_for_metadata(self):
+    def test_clothes_do_not_become_interior_via_description(self):
+        item = post(
+            "Pull col rond Bonobo Instinct - 70% coton",
+            "https://www.dealabs.com/bons-plans/bonobo",
+            "Promo -70% pour la table de salon; lampe design",
+        )
+        with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
+            self.assertEqual(bot.candidates([item]), [])
+
+
         item = post("Lampade Nordic promo", "https://wrong-site.example/spam",
                     "Descuento! 10€")
         with patch.object(bot, "fetch", side_effect=AssertionError("untrusted fetch")) as f:
