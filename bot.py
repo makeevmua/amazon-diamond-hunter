@@ -7,6 +7,7 @@ import sys
 import time
 from zoneinfo import ZoneInfo
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -603,24 +604,66 @@ def telegram_send(message, buttons=None, photo_url=None):
 
 
 
+# Additional public RSS feeds may be supplied via EXTRA_RSS_FEEDS, separated
+# by commas, semicolons or newlines. URLs are restricted to the known FR/ES/IT
+# publishers; the scanner never accepts arbitrary URLs or UK/US sources.
+ALLOWED_FEED_DOMAINS = {
+    "dealabs.com", "chollometro.com", "quantospendo.app",
+    "lesnumeriques.com", "brickset.com",
+}
+
+
+def configured_feeds():
+    if RSS_URL:  # Explicit local/debug override remains unchanged.
+        return [RSS_URL]
+    urls = list(FEEDS)
+    for raw in re.split(r"[,;\\n]+", os.getenv("EXTRA_RSS_FEEDS", "")):
+        url = raw.strip()
+        if not url or url in urls:
+            continue
+        try:
+            parsed = urlsplit(url)
+            host = (parsed.hostname or "").lower()
+            trusted = host.removeprefix("www.") in ALLOWED_FEED_DOMAINS
+            if (parsed.scheme != "https" or not trusted or parsed.username
+                    or parsed.password or parsed.port not in (None, 443)):
+                print(f"Extra feed rejected (unsupported publisher): {host}")
+                continue
+        except ValueError:
+            continue
+        urls.append(url)
+        if len(urls) >= len(FEEDS) + 24:
+            break
+    return urls
+
+
+def _read_one_feed(url):
+    try:
+        return url, parse_feed(fetch(url)), None
+    except (HTTPError, URLError, TimeoutError, ET.ParseError, ValueError, OSError) as error:
+        return url, [], type(error).__name__
+
+
 def collect():
-    feed_urls = [RSS_URL] if RSS_URL else FEEDS
+    feed_urls = configured_feeds()
     posts = {}
     ok_feeds = 0
-    for url in feed_urls:
-        try:
-            xml_text = fetch(url)
-            items = parse_feed(xml_text)
+    # Parallel I/O prevents one broken RSS host from blocking the whole
+    # 15-minute scan. executor.map retains stable priority/order for duplicates.
+    with ThreadPoolExecutor(max_workers=min(6, len(feed_urls))) as executor:
+        results = executor.map(_read_one_feed, feed_urls)
+        for url, items, error in results:
+            if error:
+                print(f"FEED unavailable: {url}: {error}")
+                continue
             ok_feeds += 1
             print(f"FEED OK: {url}: {len(items)} posts")
             for item in items:
-                unique = item["key"] or item["link"]
+                unique = item["link"] or item["key"]
                 if unique and unique not in posts:
                     posts[unique] = item
-        except (HTTPError, URLError, TimeoutError, ET.ParseError, ValueError) as error:
-            print(f"FEED unavailable: {url}: {type(error).__name__}")
     if not ok_feeds:
-        raise RuntimeError("All RSS sources failed; check Dealabs feed accessibility.")
+        raise RuntimeError("All RSS sources failed; check publisher feed accessibility.")
     return list(posts.values()), ok_feeds, len(feed_urls)
 
 
