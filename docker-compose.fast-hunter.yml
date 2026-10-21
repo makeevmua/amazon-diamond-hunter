@@ -1,0 +1,16 @@
+services:
+  diamond-fast-hunter:
+    build:
+      context: .
+      dockerfile: Dockerfile.fast-hunter
+    restart: unless-stopped
+    env_file:
+      - .env.hunter
+    environment:
+      DIRECT_INTERVAL_SECONDS: "${DIRECT_INTERVAL_SECONDS:-90}"
+      DIRECT_MAX_QUERIES: "${DIRECT_MAX_QUERIES:-2}"
+      DIRECT_WATCH_BATCHES: "${DIRECT_WATCH_BATCHES:-1}"
+    volumes:
+      - fast-hunter-state:/data
+volumes:
+  fast-hunter-state:
