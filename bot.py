@@ -949,6 +949,21 @@ def run():
     before_scope_filter = len(posts)
     posts = [item for item in posts if policy.is_allowed(item.get("title"), item.get("description"))]
     print(f"PRODUCT POLICY: {before_scope_filter - len(posts)} unwanted Xbox/Samsung listings excluded.")
+    # Keep exact retailer identifiers discovered from the public sources.
+    # Subsequent Creators GetItems queries see future price changes at Amazon
+    # directly, without waiting for a forum user to announce that change.
+    watch_urls = []
+    for post in posts:
+        if post.get("direct_source"):
+            watch_urls.append(post["link"])
+            continue
+        text = (post.get("description", "") + " " + post.get("content", ""))[:2800]
+        if "amazon." in text.lower():
+            address = find_amazon_link(text)
+            if address:
+                watch_urls.append(address)
+    watched = amazon_direct.add_watchlist(meta, watch_urls)
+    SCAN_STATS["watch_asins"] = watched
     history = meta.setdefault("public_offer_history", {})
     notified_prices = meta.setdefault("notified_offer_prices", {})
     community = candidates([post for post in posts if not post.get("direct_source")], history)
