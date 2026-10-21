@@ -27,7 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Restore seen-items cache
-        if: github.event_name != 'push'
+        # Keep the full catalog visible even after a code-only push rebuild.
+        # The dry-run never saves alert dedupe state on push.
         uses: actions/cache/restore@v4
         with:
           path: |
