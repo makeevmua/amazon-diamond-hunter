@@ -357,19 +357,40 @@ def discover(state, env=None, now=None):
             metrics[shop] = {"status": "unavailable", "offers": 0,
                              "checked_at": now.isoformat(timespec="seconds")}
             continue
-        if not links and shop == "Cdiscount":
-            # Provider fallback is opt-in: both a token and Web Unlocker
-            # zone must be configured by the account owner.
+        if (not links and shop == "Cdiscount" and
+                os.getenv("BRIGHTDATA_API_TOKEN") and
+                os.getenv("BRIGHTDATA_UNLOCKER_ZONE")):
+            # Protect the shared Bright Data free-credit pool.
+            usage = state.setdefault("cdiscount_unlocker_usage", {})
+            day = now.date().isoformat()
+            if usage.get("day") != day:
+                usage.update({"day": day, "count": 0})
             try:
-                unlocked = _fetch_cdiscount_with_provider(url)
+                daily_limit = max(0, min(20,
+                    int(env.get("BRIGHTDATA_CDISCOUNT_MAX_DAILY", "8"))))
+            except (ValueError, TypeError):
+                daily_limit = 8
+            if usage["count"] >= daily_limit:
+                print("RETAIL DIRECT: Cdiscount unlocker daily budget exhausted")
+                unlocked = None
+            else:
+                # Reserve the attempt before any potential billable request.
+                usage["count"] += 1
+                try:
+                    unlocked = _fetch_cdiscount_with_provider(url)
+                except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
+                    print(f"RETAIL DIRECT: Cdiscount provider unavailable ({type(exc).__name__})")
+                    unlocked = None
+            try:
                 if unlocked:
                     parser = ProductLinks(url)
                     parser.feed(unlocked)
                     links = list(dict.fromkeys(parser.links))
                     links.sort(key=lambda row: not offers_25(row[1]))
                     print(f"RETAIL DIRECT: Cdiscount Bright Data unlocked {len(links)} product links")
-            except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
-                print(f"RETAIL DIRECT: Cdiscount provider unavailable ({type(exc).__name__})")
+            except (ValueError, TypeError):
+                links = []
+        # Never publish a blocked page or fabricate product records.
         if not links:
             metrics[shop] = {"status": "no_product_links", "cards_on_listing": 0,
                              "offers": 0, "checked_at": now.isoformat(timespec="seconds")}
