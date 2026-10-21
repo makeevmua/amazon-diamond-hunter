@@ -933,7 +933,14 @@ def run():
     meta = seen.setdefault("__metadata__", {})
     first_party = amazon_direct.discover(meta) if os.getenv(
         "DIRECT_AMAZON_ENABLED", "true").lower() == "true" else []
-    posts, available, requested = collect()
+    try:
+        posts, available, requested = collect()
+    except RuntimeError:
+        if not first_party:
+            raise
+        print("FALLBACK: community sources unavailable, direct Amazon quotes retained.")
+        posts, available, requested = [], 0, len(configured_feeds())
+        SCAN_STATS.update({"rss_total": requested, "rss_ok": 0, "rss_unavailable": []})
     SCAN_STATS["amazon_direct"] = len(first_party)
     # These products were actually read from the Amazon catalog, not
     # discovered via a deal-sharing website. Preserve provenance.
