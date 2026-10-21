@@ -154,6 +154,16 @@ def discover(state, env=None, now=None, requests_per_scan=None):
     except (ValueError, TypeError):
         daily_limit = 64
     limit = min(limit, max(0, daily_limit - used["calls"]))
+    # Spread the finite token budget throughout the full day. Without this,
+    # five-minute polls consume all paid tokens before lunchtime.
+    if daily_limit:
+        floor_seconds = max(60, (24 * 3600) // daily_limit)
+        last_scan = state.get("keepa_deals_last_checked")
+        if type(last_scan) in (float, int) and (
+                now.timestamp() - last_scan < floor_seconds):
+            return []
+    if limit:
+        state["keepa_deals_last_checked"] = now.timestamp()
     for n in range(limit):
         used["calls"] += 1 # A failed HTTP request may still consume tokens.
 
