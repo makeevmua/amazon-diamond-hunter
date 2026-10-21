@@ -25,6 +25,7 @@ import pepper
 import observations
 import pricechecks
 import catalog_ui
+import sqlite3
 import amazon_direct
 import direct_pipeline
 
@@ -945,6 +946,20 @@ def run():
     # First-party Amazon discovery runs before any community search latency.
     seen = get_seen()
     meta = seen.setdefault("__metadata__", {})
+    # Seed direct Amazon watch checks with hundreds of products accumulated
+    # before this release; otherwise initial scans only search a few queries
+    # and miss existing known products until community feeds mention them.
+    if amazon_direct.enabled() and Path(CATALOG_PATH).is_file():
+        try:
+            with sqlite3.connect(CATALOG_PATH) as local:
+                known = [row[0] for row in local.execute(
+                    "SELECT amazon_product_url FROM offers "
+                    "WHERE amazon_product_url IS NOT NULL AND amazon_product_url != '' "
+                    "ORDER BY last_seen DESC LIMIT 600")]
+            count = amazon_direct.add_watchlist(meta, known)
+            print(f"AMAZON DIRECT: seeded {count} monitored ASINs from existing catalog.")
+        except (sqlite3.DatabaseError, OSError):
+            print("AMAZON DIRECT: previous catalog unavailable; fresh searches continue.")
     first_party = amazon_direct.discover(meta) if os.getenv(
         "DIRECT_AMAZON_ENABLED", "true").lower() == "true" else []
     direct_only = os.getenv("DIRECT_ONLY_RUN", "false").lower() == "true"
