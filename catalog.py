@@ -98,6 +98,12 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
         # Never claim it has been checked on Amazon.
         if price is None and pair is not None:
             price = pair[1]
+        # Price reported by the deal-sharing platform is not store-verified.
+        if price is None:
+            reported = post.get("advertised_price_eur")
+            if isinstance(reported, (int, float)) and not isinstance(reported, bool):
+                if 0 <= reported <= 100000:
+                    price = round(reported, 2)
         price_scope = ("mixed_merchants_unverified" if host in COMPARISON_DOMAINS
                        else "unverified_public_offer")
         direct = candidate.get("amazon") if candidate else None
