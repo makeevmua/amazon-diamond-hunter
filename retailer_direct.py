@@ -392,7 +392,11 @@ def discover(state, env=None, now=None):
                 links = []
         # Never publish a blocked page or fabricate product records.
         if not links:
-            metrics[shop] = {"status": "no_product_links", "cards_on_listing": 0,
+            reason = ("needs_web_unlocker"
+                      if shop == "Cdiscount" and
+                      not env.get("BRIGHTDATA_UNLOCKER_ZONE")
+                      else "no_product_links")
+            metrics[shop] = {"status": reason, "cards_on_listing": 0,
                              "offers": 0, "checked_at": now.isoformat(timespec="seconds")}
             print(f"RETAIL DIRECT: {shop} listing has no direct product URLs.")
             continue
