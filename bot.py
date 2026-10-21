@@ -969,9 +969,11 @@ def run():
     # optional paid provider. Public RSS remains a third-choice fallback.
     keepa_offers = (keepa_discovery.discover(meta, requests_per_scan=1)
                    if not DRY_RUN else [])
-    direct_offers = [*first_party, *keepa_offers]
+    priority_urls = {p["link"] for p in first_party}
+    direct_offers = [*first_party, *[p for p in keepa_offers if
+                    p["link"] not in priority_urls]]
     try:
-        if direct_only and amazon_direct.enabled():
+        if direct_only and (amazon_direct.enabled() or bool(os.getenv("KEEPA_API_KEY"))):
             posts, available, requested = [], 0, 0
             SCAN_STATS.clear()
             SCAN_STATS.update({"rss_total": 0, "rss_ok": 0,
@@ -1023,6 +1025,7 @@ def run():
     found = direct_pipeline.merge_candidates(community, [*native, *keepa_native])
     if keepa_native and not DRY_RUN:
         confirmations = brightdata_verify.verify(keepa_native[:8], meta)
+        SCAN_STATS["brightdata_verified"] = len(confirmations)
         for deal in keepa_native:
             check = confirmations.get(deal["amazon"])
             if check:
