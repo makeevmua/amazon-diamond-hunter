@@ -21,11 +21,11 @@
     "max": null
   },
   "min_real_savings_eur": 0,
-  "min_discount_percent": 50,
+  "min_discount_percent": 25,
   "priority_discount_percent": 70,
   "out_of_budget_exception": {
     "enabled": true,
-    "min_discount_percent": 70,
+    "min_discount_percent": 25,
     "min_absolute_saving_eur": 100
   },
   "preferred_brand_groups": [
@@ -42,7 +42,7 @@
     "Dyson / Roborock",
     "Philips / De'Longhi"
   ],
-  "preferred_brand_policy": "priority_not_hard_exclusion",
+  "preferred_brand_policy": "no_priority_all_allowed_products_at_25",
   "exclusions": [
     "used_or_refurbished",
     "unreputable_unknown_brands",
@@ -63,13 +63,13 @@
     "channel": "telegram",
     "deal_delivery": {
       "mode": "send_each_qualifying_deal_as_discovered",
-      "min_discount_percent": 50,
+      "min_discount_percent": 25,
       "send_time": "next_successful_scan",
-      "note": "At next successful polling run: interior design candidates from 25%, other categories from 50%, out-of-category recognizable brands from 80%. All advertised percentages unverified."
+      "note": "Every allowed category, same 25% threshold. Retailer-only direct quotes, no priority categories, no forum posts."
     },
     "unverified_candidates": {
       "enabled": true,
-      "min_claimed_discount_percent": 50,
+      "min_claimed_discount_percent": 25,
       "must_be_clearly_labeled_unverified": true
     },
     "quiet_hours": {
@@ -102,8 +102,8 @@
       "require_successful_source_page_fetch": true,
       "require_discount_thresholds": true,
       "min_interior_claimed_discount_percent": 25,
-      "min_other_categories_claimed_discount_percent": 50,
-      "min_unexpected_brand_claimed_discount_percent": 80,
+      "min_other_categories_claimed_discount_percent": 25,
+      "min_unexpected_brand_claimed_discount_percent": 25,
       "maximum_notifications_per_scan": 3,
       "direct_amazon_product_alerts_take_priority": true,
       "persistent_dedupe": true,
@@ -166,17 +166,17 @@
     {
       "id": "lego_construction",
       "name": "LEGO и конструкторы",
-      "min_claimed_discount_percent": 50
+      "min_claimed_discount_percent": 25
     },
     {
       "id": "collectibles",
       "name": "Коллекционные товары",
-      "min_claimed_discount_percent": 50
+      "min_claimed_discount_percent": 25
     },
     {
       "id": "personal_care",
       "name": "Уход за собой",
-      "min_claimed_discount_percent": 50
+      "min_claimed_discount_percent": 25
     }
   ],
   "interior_design_profile": {
@@ -257,7 +257,7 @@
   },
   "unexpected_diamond": {
     "enabled": true,
-    "min_claimed_discount_percent": 80,
+    "min_claimed_discount_percent": 25,
     "allowed_outside_categories": true,
     "recognizable_brand_required": true,
     "must_be_clearly_labeled_unverified": true,
@@ -401,5 +401,12 @@
     "inactive_direct_sources": [
       "Cdiscount and Joybuy direct product-price connectors (not yet configured)"
     ]
+  },
+  "alert_threshold_policy": {
+    "mode": "universal",
+    "min_discount_percent": 25,
+    "category_priority": false,
+    "exclude_forbidden_categories": true,
+    "source": "retailer-direct-only"
   }
 }
