@@ -26,7 +26,7 @@ PAGES = {
 }
 USER_AGENT = "DiamondHunter/3.0 (public-price-observation)"
 SALE = re.compile(r"(?:-|−)\s*(\d{2})\s*%|(\d{2})\s*%\s*(?:off|de réduction|réduction)", re.I)
-EURO_SUFFIX = re.compile(r"(?<!\d)(\d{1,6}(?:[ .\u00a0]\d{3})*(?:[.,]\d{1,2})?)\s*€\s*(\d{2})?(?!\d)", re.I)
+EURO_SUFFIX = re.compile(r"(?<!\d)(\d{1,6}(?:[ .\u00a0]\d{3})*(?:[.,]\d{1,2})?)\s*€(\d{2})?(?!\d)", re.I)
 EURO_PREFIX = re.compile(r"€\s*(\d{1,6}(?:[ .\u00a0]\d{3})*(?:[.,]\d{1,2})?)", re.I)
 LD_TYPE = {"Product", "https://schema.org/Product", "http://schema.org/Product"}
 
