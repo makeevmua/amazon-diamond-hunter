@@ -21,6 +21,7 @@ import alerts
 import media
 import catalog
 import policy
+import pepper
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -670,8 +671,18 @@ def collect():
                 unique = item["link"] or item["key"]
                 if unique and unique not in posts:
                     posts[unique] = item
-    if not ok_feeds:
-        raise RuntimeError("All RSS sources failed; check publisher feed accessibility.")
+    if os.getenv("PEPPER_GRAPHQL_ENABLED", "false").lower() == "true" and not RSS_URL:
+        # Anonymous best-effort secondary channel. Failure must never break RSS.
+        for item in pepper.fetch_public_threads():
+            key = item["link"]
+            if key in posts:
+                existing = posts[key]
+                if existing.get("advertised_price_eur") is None:
+                    existing["advertised_price_eur"] = item.get("advertised_price_eur")
+            else:
+                posts[key] = item
+    if not ok_feeds and not posts:
+        raise RuntimeError("All available deal discovery sources failed.")
     return list(posts.values()), ok_feeds, len(feed_urls)
 
 
