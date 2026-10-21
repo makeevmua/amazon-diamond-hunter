@@ -92,6 +92,26 @@ class MerchantTests(unittest.TestCase):
         self.assertGreaterEqual(deal["discount"],44)
         self.assertIn("Joybuy",direct_pipeline.format_direct_alert(deal))
 
+    def test_joybuy_listing_fallback_is_marked_unverified(self):
+        teaser = ("HyperX Cloud Stinger 2 Casque -44% "
+                  "€27.99 RRP:€49.99")
+        product = retailer_direct._retailer_product(
+            JB, "<html>Real Joybuy product without JSON-LD</html>",
+            "Joybuy", NOW, teaser=teaser
+        )
+        self.assertIsNotNone(product)
+        self.assertEqual(product["direct_current_eur"], 27.99)
+        self.assertEqual(product["direct_claimed_percent"], 44)
+        self.assertEqual(product["direct_offer_type"],
+                         "RETAILER_LISTING_RRP_UNVERIFIED_PDP")
+        self.assertIsNotNone(
+            direct_pipeline.to_candidate(product,bot.category_matches)
+        )
+        bad = "Casque Gaming €9.99 RRP:€49.99 €29.99"
+        self.assertIsNone(retailer_direct._listing_fallback(
+            JB,bad,"Joybuy",NOW
+        ))
+
     def test_invalid_price_duplicate_and_unsupported_domain_dropped(self):
         markup=html_product("HyperX Gaming Casque",29.99,JB)
         self.assertIsNone(retailer_direct._retailer_product(
