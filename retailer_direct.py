@@ -20,7 +20,13 @@ import policy
 import retail_scope
 
 PAGES = {
-    "Cdiscount": ("https://www.cdiscount.com/",),
+    "Cdiscount": ("https://www.cdiscount.com/",
+                  "https://www.cdiscount.com/search/10/lego.html",
+                  "https://www.cdiscount.com/search/10/ssd.html",
+                  "https://www.cdiscount.com/search/10/playstation.html",
+                  "https://www.cdiscount.com/search/10/lampe.html",
+                  "https://www.cdiscount.com/search/10/aspirateur.html",
+                  "https://www.cdiscount.com/search/10/bureau.html"),
     "Joybuy": ("https://www.joybuy.fr/marketing/lightning-offers?renderStyle=bottom_flow",
                "https://www.joybuy.fr/"),
 }
@@ -316,6 +322,11 @@ def discover(state, env=None, now=None):
             print(f"RETAIL DIRECT: {shop} listing unavailable ({type(exc).__name__})")
             metrics[shop] = {"status": "unavailable", "offers": 0,
                              "checked_at": now.isoformat(timespec="seconds")}
+            continue
+        if not links:
+            metrics[shop] = {"status": "no_product_links", "cards_on_listing": 0,
+                             "offers": 0, "checked_at": now.isoformat(timespec="seconds")}
+            print(f"RETAIL DIRECT: {shop} listing has no direct product URLs.")
             continue
         # Deterministic rotation across candidate tiles without extra listing calls.
         index_key = "retailer_" + shop.lower() + "_item_cursor"
