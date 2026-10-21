@@ -60,7 +60,10 @@ class ProductLinks(HTMLParser):
                 self._finish()
             raw = dict(attrs).get("href") or ""
             dest = urljoin(self.base, raw)
-            self.active = {"url": dest, "text": []} if retail_scope.shop(dest) else None
+            if retail_scope.shop(dest):
+                self.active = {"url": dest, "text": []}
+            else:
+                self.active = None
         elif self.active and tag.lower() == "img":
             attrs = dict(attrs)
             alt = attrs.get("alt")
@@ -80,6 +83,13 @@ class ProductLinks(HTMLParser):
     def handle_data(self, data):
         if self.active:
             self.active["text"].append(data)
+        elif self.links and data.strip():
+            # On Joybuy the price and RRP are sibling elements *after* the
+            # product-name anchor. Include only the next 900 characters,
+            # stopping when the next product link begins.
+            url, old = self.links[-1]
+            if len(old) < 900:
+                self.links[-1] = (url, (old + " " + data.strip())[:900])
 
 
 class ProductJSON(HTMLParser):
