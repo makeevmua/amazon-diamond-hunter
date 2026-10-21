@@ -19,6 +19,8 @@ on:
       - 'amazon_direct.py'
       - 'direct_pipeline.py'
       - 'fast_hunter.py'
+      - 'keepa_discovery.py'
+      - 'brightdata_verify.py'
   schedule:
     - cron: "7,22,37,52 * * * *" # Full discovery every 15m
     - cron: "2,12,17,27,32,42,47,57 * * * *" # Amazon-only on intervening 5-minute slots
@@ -80,6 +82,9 @@ jobs:
           EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
           PEPPER_GRAPHQL_ENABLED: 'true'
           KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}
+          KEEPA_MAX_DEAL_QUERIES_PER_DAY: '64'
+          BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
+          BRIGHTDATA_PER_SCAN: '1'
           AMAZON_CREATORS_CLIENT_ID: ${{ secrets.AMAZON_CREATORS_CLIENT_ID }}
           AMAZON_CREATORS_CLIENT_SECRET: ${{ secrets.AMAZON_CREATORS_CLIENT_SECRET }}
           AMAZON_PARTNER_TAG_FR: ${{ secrets.AMAZON_PARTNER_TAG_FR }}
