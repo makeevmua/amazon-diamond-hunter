@@ -12,7 +12,7 @@ import math
 import os
 import re
 from urllib.parse import urlsplit
-import statistics
+from itertools import zip_longest
 import time
 from datetime import datetime, timezone
 from urllib.request import Request, urlopen
@@ -216,27 +216,32 @@ def normalize_item(item, market, observed_at):
 
 
 def observe_price(history, item, now_epoch):
-    """Compare authentic first-party observations, never a list price.
+    """Spot short-lived price drops from the previous first-party API quote.
 
-    Require two earlier observations spanning >=5min, at least one from
-    >=15min ago, and an aggregate median baseline higher than current.
+    One earlier valid sample 60+ seconds old is enough: requiring 15 minutes
+    and several samples would miss the exact 1–2 minute glitches we seek.
+    Return *observed* change, not independently verified historical savings.
     """
     key = item["link"]
     current = item["direct_current_eur"]
-    previous = history.setdefault(key, [])
-    good = [r for r in previous if isinstance(r, list) and len(r) == 2
-            and type(r[0]) in (int, float) and type(r[1]) in (int, float)
-            and 0 < now_epoch - r[0] <= 23 * 3600 and r[1] > 0]
-    old = [r for r in good if now_epoch - r[0] >= 15 * 60]
-    decline = None
-    if len(good) >= 2 and old and max(r[0] for r in good) - min(r[0] for r in good) >= 5 * 60:
-        baseline = statistics.median(r[1] for r in good)
-        if baseline > current:
-            decline = round(100 * (baseline - current) / baseline)
-    # Don't flood the price history with identical five-minute observations.
-    if not good or abs(good[-1][1] - current) > .009 or now_epoch - good[-1][0] >= 1200:
-        good.append([int(now_epoch), current])
-    history[key] = good[-32:]
+    recorded = history.get(key, [])
+    valid = [r for r in recorded if isinstance(r, list) and len(r) == 2
+             and type(r[0]) in (int, float) and type(r[1]) in (int, float)
+             and 60 <= now_epoch - r[0] <= 55 * 60 and
+             0 < r[1] <= 100000]
+    latest = max(valid, key=lambda r: r[0]) if valid else None
+    decline = (round(100 * (latest[1] - current) / latest[1])
+               if latest and current <= latest[1] - 5 and
+               current < latest[1] else None)
+    # Store successive checks for fast updates (not 20-min spaced),
+    # while bounding content lifetime in line with API cache rules.
+    valid_recent = [r for r in recorded if isinstance(r, list)
+                    and len(r) == 2 and type(r[0]) in (int, float)
+                    and type(r[1]) in (int, float) and
+                    0 <= now_epoch - r[0] <= 55 * 60 and
+                    0 < r[1] <= 100000]
+    valid_recent.append([int(now_epoch), current])
+    history[key] = valid_recent[-32:]
     return decline
 
 
@@ -258,9 +263,13 @@ def discover(state, env=None, now=None, sleep_between=1.1):
     except (ValueError, TypeError):
         limit = 8
     cursor = int(state.get("creators_cursor", 0))
-    market_queries = [(market, q) for market in MARKETS
-                      if env.get("AMAZON_PARTNER_TAG_" + market[-2:].upper())
-                      for q in QUERIES[market]]
+    active = [(market, QUERIES[market]) for market in MARKETS
+              if env.get("AMAZON_PARTNER_TAG_" + market[-2:].upper())]
+    # Interleave markets: a five-query budget must not exclusively scan FR.
+    rounds = zip_longest(*(tuple((market, q) for q in queries)
+                          for market, queries in active))
+    market_queries = [pair for group in rounds for pair in group
+                      if pair is not None]
     if not market_queries:
         return []
     try:
@@ -295,7 +304,7 @@ def discover(state, env=None, now=None, sleep_between=1.1):
             try:
                 rsp = get_items(token, market,
                     env["AMAZON_PARTNER_TAG_" + market[-2:].upper()], ids)
-                for it in ((rsp.get("itemsResult") or {}).get("items") or []):
+                for it in ((rsp.get("itemResults") or {}).get("items") or []):
                     rec = normalize_item(it, market, when)
                     if rec:
                         found[rec["link"]] = rec
@@ -343,11 +352,11 @@ def discover(state, env=None, now=None, sleep_between=1.1):
     stamp = now.timestamp()
     for rec in found.values():
         rec["direct_observed_drop"] = observe_price(history, rec, stamp)
-    # Amazon Creators offer content is time-limited; prune persisted prices.
+    # Amazon Creators offer TTL is 1h; expire cached quotes by 55 minutes.
     for key in list(history):
         history[key] = [r for r in history[key] if
                         isinstance(r, list) and len(r) == 2 and
-                        0 <= stamp - r[0] <= 23 * 3600]
+                        0 <= stamp - r[0] <= 55 * 60]
         if not history[key]:
             del history[key]
     if len(history) > 4000:
