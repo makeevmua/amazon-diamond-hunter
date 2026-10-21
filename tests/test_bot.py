@@ -170,7 +170,7 @@ class DiamondTests(unittest.TestCase):
             f.assert_not_called()
 
 
-        item = post("Samsung smartphone -70%",
+        item = post("Sony PlayStation game -70%",
                     "https://www.chollometro.com/ofertas/samsung",
                     "https://www.amazon.es/dp/B0B9C4DKKG")
         with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
@@ -381,7 +381,7 @@ class DiamondTests(unittest.TestCase):
 
     def test_dealabs_direct_amazon_still_supported(self):
         item = post(
-            'Samsung Galaxy smartphone -65%',
+            'Samsung SSD 990 PRO -65%',
             'https://www.dealabs.com/bons-plans/samsung-direct',
             'https://amazon.fr/dp/B0G53TJ5LJ',
             key='samsung-dealabs',
