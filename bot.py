@@ -1192,7 +1192,7 @@ def run():
             message = direct_pipeline.format_direct_alert(deal)
             check = deal.get("brightdata_quote")
             if check:
-                message += ("\\nСверка Bright Data: " +
+                message += ("\nСверка Bright Data: " +
                             f"{check['price_eur']:.2f} €; " +
                             ("совпало с Keepa в пределах 3%." if deal.get("brightdata_price_matches")
                              else "ЦЕНЫ НЕ СОВПАЛИ — перепроверь перед покупкой.") +
