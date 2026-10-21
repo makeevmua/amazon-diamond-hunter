@@ -24,6 +24,8 @@ MARKETS = ("amazon.fr", "amazon.de", "amazon.es", "amazon.it")
 ASIN = re.compile(r"^[A-Z0-9]{10}$", re.I)
 AUTH_URL = "https://api.amazon.co.uk/auth/o2/token"   # LwA EU v3.2
 API_URL = "https://creatorsapi.amazon/catalog/v1/searchItems"
+GETITEMS_URL = "https://creatorsapi.amazon/catalog/v1/getItems"
+_TOKEN_CACHE = {"value": None, "expires": 0}
 RESOURCES = [
     "itemInfo.title", "images.primary.medium",
     "offersV2.listings.price", "offersV2.listings.condition",
@@ -79,6 +81,9 @@ def _post_json(url, payload, headers=None, timeout=12):
 
 def get_token(env=None):
     env = env or os.environ
+    now = time.monotonic()
+    if _TOKEN_CACHE["value"] and now + 120 < _TOKEN_CACHE["expires"]:
+        return _TOKEN_CACHE["value"]
     doc = _post_json(AUTH_URL, {
         "grant_type": "client_credentials",
         "client_id": env["AMAZON_CREATORS_CLIENT_ID"],
@@ -88,6 +93,8 @@ def get_token(env=None):
     token = doc.get("access_token")
     if not isinstance(token, str) or not token:
         raise ValueError("Amazon Creators did not issue an access token")
+    ttl = doc.get("expires_in", 3600)
+    _TOKEN_CACHE.update({"value": token, "expires": now + min(int(ttl), 3600)})
     return token
 
 
@@ -102,6 +109,37 @@ def search_items(token, market, partner_tag, keywords):
         "Authorization": "Bearer " + token,
         "x-marketplace": locale,
     })
+
+
+def get_items(token, market, partner_tag, asins):
+    locale = "www." + market
+    return _post_json(GETITEMS_URL, {
+        "itemIds": asins, "itemIdType": "ASIN", "condition": "New",
+        "partnerTag": partner_tag, "marketplace": locale,
+        "resources": RESOURCES,
+    }, headers={"Authorization": "Bearer " + token, "x-marketplace": locale})
+
+
+def add_watchlist(state, canonical_urls):
+    """Store only product identifiers, not long-lived Amazon advertising content."""
+    watched = state.setdefault("direct_watch_asins", {})
+    for url in canonical_urls:
+        if not isinstance(url, str):
+            continue
+        try:
+            p = urlsplit(url)
+            market = (p.hostname or "").lower()
+            asin = p.path.strip("/").split("/")
+            if (p.scheme == "https" and market in MARKETS and len(asin) == 2
+                    and asin[0] == "dp" and ASIN.fullmatch(asin[1])):
+                store = watched.setdefault(market, [])
+                upper = asin[1].upper()
+                if upper not in store:
+                    store.append(upper)
+                watched[market] = store[-150:]
+        except (ValueError, TypeError):
+            pass
+    return sum(len(x) for x in watched.values())
 
 
 def _positive_euro(obj):
@@ -230,6 +268,41 @@ def discover(state, env=None, now=None, sleep_between=1.1):
     found = {}
     successful = 0
     attempted = 0
+    watched = state.get("direct_watch_asins", {})
+    if isinstance(watched, dict) and watched:
+        watch_cursor = int(state.get("direct_watch_cursor", 0))
+        watch_groups = []
+        for market in MARKETS:
+            if not env.get("AMAZON_PARTNER_TAG_" + market[-2:].upper()):
+                continue
+            ids = watched.get(market) or []
+            if not isinstance(ids, list):
+                continue
+            for offset in range(0, len(ids), 10):
+                valid = [a for a in ids[offset:offset+10] if
+                         isinstance(a, str) and ASIN.fullmatch(a)]
+                if valid:
+                    watch_groups.append((market, valid))
+        try:
+            watch_budget = max(0, min(int(env.get("DIRECT_WATCH_BATCHES", "2")), 5))
+        except (TypeError, ValueError):
+            watch_budget = 2
+        for i in range(min(watch_budget, len(watch_groups))):
+            market, ids = watch_groups[(watch_cursor+i) % len(watch_groups)]
+            try:
+                rsp = get_items(token, market,
+                    env["AMAZON_PARTNER_TAG_" + market[-2:].upper()], ids)
+                for it in ((rsp.get("itemsResult") or {}).get("items") or []):
+                    rec = normalize_item(it, market, when)
+                    if rec:
+                        found[rec["link"]] = rec
+                successful += 1
+            except (HTTPError, URLError, TimeoutError, OSError, ValueError, KeyError) as e:
+                print(f"AMAZON DIRECT WATCH: {market} failed ({type(e).__name__})")
+                if isinstance(e, HTTPError) and e.code in (401, 403, 429):
+                    break
+            time.sleep(sleep_between)
+        state["direct_watch_cursor"] = watch_cursor + min(watch_budget, len(watch_groups))
     for i in range(min(limit, len(market_queries))):
         market, query = market_queries[(cursor + i) % len(market_queries)]
         if attempted:
