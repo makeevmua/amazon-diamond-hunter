@@ -31,6 +31,7 @@ import direct_pipeline
 import keepa_discovery
 import brightdata_verify
 import brightdata_search
+import retail_scope
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -981,7 +982,10 @@ def run():
             direct_offers.append(offer)
             direct_urls.add(offer["link"])
     try:
-        if direct_only and (amazon_direct.enabled() or bool(os.getenv("KEEPA_API_KEY"))):
+        if retail_scope.enabled() or (
+                direct_only and (amazon_direct.enabled() or bool(os.getenv("KEEPA_API_KEY")))):
+            # Community feeds may still be useful for research, but the user's
+            # production hunter must not wait for or republish forum posts.
             posts, available, requested = [], 0, 0
             SCAN_STATS.clear()
             SCAN_STATS.update({"rss_total": 0, "rss_ok": 0,
@@ -1000,10 +1004,13 @@ def run():
     SCAN_STATS["amazon_direct"] = len(first_party)
     SCAN_STATS["keepa_deals"] = len(keepa_offers)
     SCAN_STATS["brightdata_search"] = len(search_offers)
-    # These products were actually read from the Amazon catalog, not
-    # discovered via a deal-sharing website. Preserve provenance.
-    posts = [*direct_offers, *[post for post in posts if
-              post.get("link") not in {p["link"] for p in direct_offers}]]
+    # Site/Telegram products in retailer-only mode MUST originate directly
+    # from authorized retailer-price providers, never forum articles.
+    if retail_scope.enabled():
+        posts = [post for post in direct_offers if retail_scope.direct_post(post)]
+    else:
+        posts = [*direct_offers, *[post for post in posts if
+                 post.get("link") not in {p["link"] for p in direct_offers}]]
     before_scope_filter = len(posts)
     posts = [item for item in posts if policy.is_allowed(item.get("title"), item.get("description"))]
     print(f"PRODUCT POLICY: {before_scope_filter - len(posts)} unwanted Xbox/Samsung listings excluded.")
@@ -1024,7 +1031,8 @@ def run():
     SCAN_STATS["watch_asins"] = watched
     history = meta.setdefault("public_offer_history", {})
     notified_prices = meta.setdefault("notified_offer_prices", {})
-    community = candidates([post for post in posts if not post.get("direct_source")], history)
+    community = ([] if retail_scope.enabled() else
+                 candidates([post for post in posts if not post.get("direct_source")], history))
     native = [deal for item in first_party if
               (deal := direct_pipeline.to_candidate(item, category_matches,
                   INTERIOR_DISCOUNT, MIN_DISCOUNT))]
@@ -1111,6 +1119,9 @@ def run():
         if deal.get("suppress_alert"):
             continue
         item = deal["item"]
+        if retail_scope.enabled() and not (
+                retail_scope.direct_post(item) and retail_scope.shop(deal.get("amazon"))):
+            continue
         source_only = deal["source_only"]
         if source_only and sent_source_only >= MAX_SOURCE_ALERTS:
             continue

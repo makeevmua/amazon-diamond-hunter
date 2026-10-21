@@ -1,5 +1,14 @@
 # 💎 Amazon Diamond Hunter FREE — four-market candidate scout
 
+## Только Amazon / Cdiscount / Joybuy — строгий товарный режим
+
+**В продакшене включён `RETAILER_ONLY=true`.** Никаких объявлений Dealabs, mydealz, Chollometro, Brickset, Les Numériques и других источников в Telegram и на сайте. Удаляются ранее сохранённые карточки из базы без прямых магазинных цен, чтобы одежда Bonobo и настолки не оставались в каталоге. Запрет распространяется на одежду, обувь, моду, настольные и карточные игры; **LEGO, PS/PC/Nintendo, SSD и электроника остаются**.
+
+Требуется точный URL товарной страницы по адресу Amazon.fr/de/es/it, Cdiscount.com или Joybuy.fr; категории магазинов, поиск, сторонние редиректы и ссылки на Dealabs не принимаются. Фотография и рекламный процент сами по себе не доказывают скидку. Для Amazon есть самостоятельные источники Keepa, Bright Data и Creators, работающие только с соответствующими ключами. **Cdiscount и Joybuy разрешены как будущие самостоятельные магазины, но автоматическое получение их прайс-листов пока не подключено.** Мы не выдаём страницу Dealabs за собственный мониторинг Cdiscount.
+
+Для обратной совместимости локальных тестов без явной переменной окружения исторические механизмы доступны, но оба production-задания GitHub Actions всегда выставляют `RETAILER_ONLY=true`. Настройка собственного постоянно работающего контейнера также должна задавать `RETAILER_ONLY=true`.
+
+
 ## Bright Data Amazon Keyword Search — без Keepa и Amazon Partenaires
 
 Подключён ещё один **собственный канал поиска**: [Bright Data Amazon Products Search](https://brightdata.com/products/web-scraper/amazon), официальный dataset `gd_lwdb4vjm1ehb499uxs`. Он выполняет одноcтраничный поиск по ключевым словам непосредственно на европейских Amazon.fr/.de/.es/.it, получает ASIN, название и EUR-цену и не ждёт публикации на Dealabs.

@@ -46,13 +46,19 @@
   "exclusions": [
     "used_or_refurbished",
     "unreputable_unknown_brands",
-    "suspicious_third_party_sellers"
+    "suspicious_third_party_sellers",
+    "clothing",
+    "shoes",
+    "fashion",
+    "tabletop_board_games",
+    "offline_local_only_deals",
+    "anything_without_direct_allowed_store_product_link"
   ],
   "deal_confidence": [
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Parallel FR/ES/IT RSS scanner with filtered storefront and claimed/unverified discount data. Xbox excluded, Samsung SSD only, PC/PlayStation/Nintendo kept. Discounts are NOT verified current Amazon savings. Amazon.de included from German sources.",
+  "note": "Strict retailer-only production: direct Amazon/Cdiscount/Joybuy products, no Dealabs/other forum notices, no clothing or tabletop games. Amazon direct discovery requires provider access; Cdiscount/Joybuy direct discovery not yet live.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -364,5 +370,36 @@
     "samsung": "only Samsung solid-state drives (SSD/NVMe/portable SSD), exclude all other Samsung products and Galaxy accessories",
     "apply_to": "Telegram notifications, new discoveries and previously indexed web storefront cards",
     "preserve": "all PC and PlayStation gaming and components"
+  },
+  "allowed_retailers": [
+    "Amazon.fr",
+    "Amazon.de",
+    "Amazon.es",
+    "Amazon.it",
+    "Cdiscount.com",
+    "Joybuy.fr"
+  ],
+  "forbidden_categories": [
+    "clothing",
+    "apparel",
+    "shoes",
+    "fashion",
+    "board games",
+    "tabletop games",
+    "card games"
+  ],
+  "production_policy": {
+    "mode": "RETAILER_ONLY",
+    "publish": "Only direct product pages on Amazon Cdiscount Joybuy, with direct retailer-data provenance",
+    "no_republication": "Dealabs / Mydealz / Chollometro / Brickset / Les Numeriques disabled in production",
+    "shopping_links": "Product URL only; no forum/source buttons",
+    "direct_amazon_sources": [
+      "Amazon Creators (credentials required)",
+      "Keepa Deals (API key required)",
+      "Bright Data Amazon Search (token configured)"
+    ],
+    "inactive_direct_sources": [
+      "Cdiscount and Joybuy direct product-price connectors (not yet configured)"
+    ]
   }
 }

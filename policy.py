@@ -32,6 +32,33 @@ NON_SSD_SAMSUNG = re.compile(
 )
 
 
+
+# Hard product-title exclusions. Avoid scanning unrelated descriptions/sidebar.
+# These rules intentionally preserve LEGO construction and PC/console games.
+APPAREL = re.compile(
+    r"(?i)\b(?:surchemise|chemises?|shirt|shirts|t[ -]?shirts?|"
+    r"pulls?|pullovers?|sweatshirts?|sweaters?|hoodies?|"
+    r"vestes?|manteaux?|blousons?|parkas?|doudounes?|"
+    r"robes?|jupes?|pantalons?|jeans|shorts?|"
+    r"chaussures?|baskets?|sneakers?|boots?|"
+    r"casquettes?|écharpes?|echarpes?|"
+    r"jackets?|coats?|trousers?|skirts?|dresses?|"
+    r"hemden?|jacken?|hosen?|schuhe|kleider|pullover|"
+    r"camisas?|camisetas?|vestidos?|pantalones|zapatos?|"
+    r"giacche|magliette|pantaloni|scarpe|"
+    r"vêtements?|vetements?|clothing|apparel|mode\s+homme|"
+    r"mode\s+femme|fashion|streetwear)\b"
+)
+TABLETOP_GAMES = re.compile(
+    r"(?i)\b(?:jeux?\s+de\s+soci[ée]t[ée]|jeux?\s+de\s+plateau|"
+    r"board\s*games?|tabletop\s+games?|"
+    r"juegos?\s+de\s+mesa|juegos?\s+de\s+tablero|"
+    r"gioc(?:o|hi)\s+da\s+tavolo|gesellschaftsspiele?|brettspiele?|"
+    r"kartenspiele?|card\s+games?|juegos?\s+de\s+cartas|"
+    r"jeux?\s+de\s+cartes|puzzles?)\b"
+)
+
+
 def is_allowed(title, description=""):
     """Conservatively classify the offer headline, not a whole merchant page.
 
@@ -40,6 +67,8 @@ def is_allowed(title, description=""):
     """
     title = re.sub(r"<[^>]*>", " ", str(title or ""))
     description = re.sub(r"<[^>]*>", " ", str(description or ""))
+    if APPAREL.search(title) or TABLETOP_GAMES.search(title):
+        return False
     if XBOX.search(title):
         return False
     if GALAXY_PRODUCT.search(title):
