@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Restore seen-items cache
-        if: github.event_name != 'push'
+        # Preserve accumulated offers on push dry-run storefront rebuilds.
         uses: actions/cache/restore@v4
         with:
           path: |
