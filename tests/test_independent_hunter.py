@@ -81,7 +81,7 @@ class KeepaIndependentTests(unittest.TestCase):
             first=keepa_discovery.discover(state, env=env,now=NOW,requests_per_scan=4)
             keepa_discovery.discover(state,env=env,now=NOW,requests_per_scan=4)
         self.assertEqual(fetch.call_count,2)
-        self.assertEqual(len(first),1) # Same ASIN across distinct EU markets
+        self.assertEqual(len(first),2) # Same ASIN on FR and DE is two separate offers
         self.assertEqual(state["keepa_deals_usage"]["calls"],2)
         self.assertEqual(state["keepa_deals_cursor"],2)
 
