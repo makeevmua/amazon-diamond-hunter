@@ -53,11 +53,4 @@ def is_allowed(title, description=""):
         r"support\s+pour|cable\s+pour)\b", title
     ) and not re.search(r"(?i)\b(?:ps[345]|playstation|pc|ordinateur|switch)\b", title):
         return False
-    # If the headline is generic but its first words name the Samsung brand,
-    # apply the same rule. Never use a sidebar or complete product page text.
-    if not SAMSUNG.search(title) and SAMSUNG.search(description[:90]):
-        if (re.search(r"(?i)\b(?:t[ée]l[ée]viseur|tv|tablette|phone|"
-                      r"smartphone|chargeur|coque|buds|moniteur)\b", title)
-            or not SAMSUNG_SSD.search(title + " " + description[:90])):
-            return False
     return True
