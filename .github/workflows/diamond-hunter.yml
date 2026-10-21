@@ -44,6 +44,7 @@ jobs:
           DRY_RUN: 'true'
           CATALOG_ENABLED: 'true'
           EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
+          PEPPER_GRAPHQL_ENABLED: 'true' # Experimental; gracefully falls back to RSS.
           MAX_NOTIFICATIONS: '3'
         run: python3 bot.py
       - name: Send Telegram connection test (manual runs only)

@@ -20,6 +20,8 @@ import signals
 import alerts
 import media
 import catalog
+import policy
+import pepper
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -28,6 +30,13 @@ FEEDS = [
     "https://www.dealabs.com/rss/groupe/consoles-jeux-video",
     "https://www.dealabs.com/rss/groupe/image-son-video",
     "https://www.dealabs.com/rss/groupe/telephonie",
+    # Additional thematic feeds documented by public Dealabs RSS integrations.
+    "https://www.dealabs.com/rss/groupe/maison-jardin",
+    "https://www.dealabs.com/rss/groupe/jeux-jouets",
+    "https://www.dealabs.com/rss/groupe/hygiene-sante-cosmetiques",
+    "https://www.dealabs.com/rss/groupe/accessoires-gadgets",
+    "https://www.dealabs.com/rss/groupe/animaux",
+    "https://www.dealabs.com/rss/groupe/culture-divertissement",
     "https://www.chollometro.com/rss",
     "https://quantospendo.app/offerte/feed.xml",
     "https://www.lesnumeriques.com/rss-gooddeals.xml",
@@ -488,7 +497,7 @@ def category_matches(source):
 
 def relevant(title, desc):
     source = html.unescape(title + " " + re.sub(r"<[^>]*>", " ", desc[:600]))
-    return bool(category_matches(source) and
+    return bool(policy.is_allowed(title, desc) and category_matches(source) and
                 not EXCLUDE_RE.search(source) and
                 not OBVIOUS_NO_NAME.search(source))
 
@@ -662,8 +671,18 @@ def collect():
                 unique = item["link"] or item["key"]
                 if unique and unique not in posts:
                     posts[unique] = item
-    if not ok_feeds:
-        raise RuntimeError("All RSS sources failed; check publisher feed accessibility.")
+    if os.getenv("PEPPER_GRAPHQL_ENABLED", "false").lower() == "true" and not RSS_URL:
+        # Anonymous best-effort secondary channel. Failure must never break RSS.
+        for item in pepper.fetch_public_threads():
+            key = item["link"]
+            if key in posts:
+                existing = posts[key]
+                if existing.get("advertised_price_eur") is None:
+                    existing["advertised_price_eur"] = item.get("advertised_price_eur")
+            else:
+                posts[key] = item
+    if not ok_feeds and not posts:
+        raise RuntimeError("All available deal discovery sources failed.")
     return list(posts.values()), ok_feeds, len(feed_urls)
 
 
@@ -678,11 +697,15 @@ def candidates(posts, public_history=None):
         "below_threshold": 0, "no_amazon_product_link": 0,
         "eligible": 0, "editorial_metadata_found": 0,
         "price_only": 0, "suspected_price_error": 0, "historical_claim": 0,
+        "filtered_product": 0,
     }
     unresolved_examples = []
     for item in posts:
         title = html.unescape(item["title"])
         desc = item["description"]
+        if not policy.is_allowed(title, desc):
+            counters["filtered_product"] += 1
+            continue
         # Brickset's "Discounts at Amazon.es" RSS entries are multi-product
         # roundups, not an individual deal. Percentages and ASINs can belong
         # to DIFFERENT items. Never send the roundup as one discounted product.
@@ -887,6 +910,9 @@ def run():
     ):
         raise RuntimeError("Create Telegram bot and set both Actions secrets first.")
     posts, available, requested = collect()
+    before_scope_filter = len(posts)
+    posts = [item for item in posts if policy.is_allowed(item.get("title"), item.get("description"))]
+    print(f"PRODUCT POLICY: {before_scope_filter - len(posts)} unwanted Xbox/Samsung listings excluded.")
     seen = get_seen()
     meta = seen.setdefault("__metadata__", {})
     history = meta.setdefault("public_offer_history", {})

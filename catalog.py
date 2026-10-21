@@ -9,6 +9,7 @@ import json
 import re
 import sqlite3
 import media
+import policy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -76,6 +77,8 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
         if host not in SOURCE_DOMAINS or not fresh_fn(post.get("pubDate")):
             continue
         title = _clean(post.get("title", ""))[:300]
+        if not policy.is_allowed(title, post.get("description", "")):
+            continue
         if host in ("brickset.com", "www.brickset.com") and EXCLUDED_BRICKSET.search(title):
             continue  # Roundups contain multiple prices/ASINs: no fake products.
         description = _clean(post.get("description", ""))[:850]
@@ -95,6 +98,12 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
         # Never claim it has been checked on Amazon.
         if price is None and pair is not None:
             price = pair[1]
+        # Price reported by the deal-sharing platform is not store-verified.
+        if price is None:
+            reported = post.get("advertised_price_eur")
+            if isinstance(reported, (int, float)) and not isinstance(reported, bool):
+                if 0 <= reported <= 100000:
+                    price = round(reported, 2)
         price_scope = ("mixed_merchants_unverified" if host in COMPARISON_DOMAINS
                        else "unverified_public_offer")
         direct = candidate.get("amazon") if candidate else None
@@ -154,6 +163,13 @@ def save_records(rows, db_path="catalog.sqlite", now=None):
                     last_seen=excluded.last_seen,
                     times_seen=offers.times_seen+1
             """, tuple(row.get(k) for k in EXPORT_FIELDS[:-3]) + (when, when))
+        # Remove previously indexed Xbox deals and Samsung non-SSD products
+        # as well: filtering only new RSS would leave stale site cards visible.
+        stale_scope = [url for url, title in db.execute(
+            'SELECT source_url,title FROM offers'
+        ).fetchall() if not policy.is_allowed(title)]
+        db.executemany('DELETE FROM offers WHERE source_url=?',
+                       [(url,) for url in stale_scope])
         # Bound storage by date and count. Fresh publication sightings are not
         # proof of continued stock or the current price.
         cutoff = (datetime.fromisoformat(when) - timedelta(days=60)).isoformat(
