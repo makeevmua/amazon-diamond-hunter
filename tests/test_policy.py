@@ -135,10 +135,10 @@ class ProductPolicyTests(unittest.TestCase):
         <link>https://www.dealabs.com/bons-plans/ssd-1</link></item></channel></rss>"""
         pepper_rows = [offer("Samsung SSD 990 PRO",
                              "https://www.dealabs.com/bons-plans/ssd-1", 89.0)]
-        with patch.object(bot, "FEEDS", ["https://www.dealabs.com/rss"]), \\
-             patch.object(bot, "RSS_URL", None), \\
-             patch.object(bot, "fetch", return_value=rss), \\
-             patch.object(bot.pepper, "fetch_public_threads", return_value=pepper_rows), \\
+        with patch.object(bot, "FEEDS", ["https://www.dealabs.com/rss"]), \
+             patch.object(bot, "RSS_URL", None), \
+             patch.object(bot, "fetch", return_value=rss), \
+             patch.object(bot.pepper, "fetch_public_threads", return_value=pepper_rows), \
              patch.dict(os.environ, {"PEPPER_GRAPHQL_ENABLED": "true",
                                      "EXTRA_RSS_FEEDS": ""}):
             posts, count, requested = bot.collect()
