@@ -117,23 +117,63 @@ def normalize(row, now=None):
     }
 
 
-def _read_search(key, market, phrase, timeout=75):
-    url = API + "?" + urlencode({"dataset_id": DATASET_ID, "format": "json"})
-    payload = {"input":[{"keyword":phrase,"url":"https://www."+market,
-                         "pages_to_search":1}]}
+def _read_search(key, market, phrase, timeout=18):
+    """Trigger exactly one official Bright Data search job (billed provider-side).
+
+    Bright Data documents this discovery dataset through /trigger with a
+    TOP-LEVEL ARRAY, not the PDP-specific /scrape {"input": [...]} envelope.
+    """
+    url = "https://api.brightdata.com/datasets/v3/trigger?" + urlencode({
+        "dataset_id": DATASET_ID, "format": "json",
+        "uncompressed_webhook": "true"
+    })
+    payload = [{"keyword":phrase, "url":"https://www."+market,
+                "pages_to_search":1}]
     req = Request(url, data=json.dumps(payload).encode("utf-8"),
                   headers={"Authorization":"Bearer "+key,
                            "Content-Type":"application/json"}, method="POST")
     with urlopen(req, timeout=timeout) as res:
-        response = json.loads(res.read(6_000_000))
-        if res.status == 202:
-            print("BRIGHT SEARCH: search snapshot pending; no fresh results asserted.")
-            return []
-    if isinstance(response, list):
-        return response[:120]
-    if isinstance(response, dict) and isinstance(response.get("data"), list):
-        return response["data"][:120]
-    return []
+        response = json.loads(res.read(1_000_000))
+    if isinstance(response, dict):
+        identifier = response.get("snapshot_id")
+        if isinstance(identifier, str) and re.fullmatch(r"s_[A-Za-z0-9_]{8,80}", identifier):
+            return {"snapshot_id": identifier}
+    # Never pretend a queued collection is a fresh search hit.
+    raise ValueError("Bright Data trigger response lacks valid snapshot_id")
+
+
+def _poll_snapshot(key, identifier, timeout=12):
+    """Download only ready results; never initiate another billable collection."""
+    if not re.fullmatch(r"s_[A-Za-z0-9_]{8,80}", str(identifier)):
+        raise ValueError("Malformed snapshot ID")
+    headers = {"Authorization": "Bearer "+key, "Accept":"application/json"}
+    progress_url = "https://api.brightdata.com/datasets/v3/progress/"+identifier
+    with urlopen(Request(progress_url, headers=headers), timeout=timeout) as res:
+        status = json.loads(res.read(200_000)).get("status")
+    if status in ("starting", "running"):
+        return None
+    if status == "failed":
+        raise ValueError("Bright Data snapshot failed")
+    if status != "ready":
+        raise ValueError("Unexpected Bright Data snapshot status")
+    download = ("https://api.brightdata.com/datasets/v3/snapshot/"+identifier+
+                "?format=json")
+    with urlopen(Request(download, headers=headers), timeout=timeout) as res:
+        raw = json.loads(res.read(7_000_000))
+    if isinstance(raw, list):
+        return raw[:120]
+    if isinstance(raw, dict) and isinstance(raw.get("data"), list):
+        return raw["data"][:120]
+    raise ValueError("Bright Data snapshot not a product list")
+
+
+def _normalized(raw, now):
+    posts = {}
+    for row in raw:
+        offer = normalize(row, now)
+        if offer:
+            posts[offer["link"]] = offer
+    return list(posts.values())
 
 
 def discover(state, env=None, now=None):
@@ -142,6 +182,37 @@ def discover(state, env=None, now=None):
     if not key or env.get("BRIGHTDATA_SEARCH_ENABLED", "true").lower() != "true":
         return []
     now = now or datetime.now(timezone.utc)
+    # Retrieve any in-flight snapshot *before* touching daily request quota.
+    # Each scan can poll an old job for free without launching another job.
+    pending = state.get("brightdata_search_pending")
+    if isinstance(pending, dict):
+        ident = pending.get("id")
+        try:
+            started = datetime.fromisoformat(pending.get("started", ""))
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            if (now - started).total_seconds() > 48*3600:
+                state.pop("brightdata_search_pending", None)
+                print("BRIGHT SEARCH: stale pending snapshot discarded")
+                return []
+            rows = _poll_snapshot(key, ident)
+        except (HTTPError, URLError, ValueError, OSError, TimeoutError) as error:
+            if isinstance(error, HTTPError):
+                print(f"BRIGHT SEARCH: snapshot HTTP {error.code}, no product data")
+            else:
+                print(f"BRIGHT SEARCH: snapshot {type(error).__name__}, will retry")
+            pending["attempts"] = int(pending.get("attempts", 0))+1
+            if pending["attempts"] >= 5:
+                state.pop("brightdata_search_pending", None)
+            return []
+        if rows is None:
+            print("BRIGHT SEARCH: snapshot still running, checking next scan")
+            return []
+        state.pop("brightdata_search_pending", None)
+        products = _normalized(rows, now)
+        print(f"BRIGHT SEARCH: snapshot ready; {len(products)} eligible "
+              f"Amazon products out of {len(rows)} records")
+        return products
     cursor = int(state.get("brightdata_search_cursor", 0)) % len(QUERIES)
     month = now.strftime("%Y-%m")
     day = now.date().isoformat()
@@ -166,15 +237,21 @@ def discover(state, env=None, now=None):
     usage["today"] += 1
     state["brightdata_search_cursor"] = (cursor + 1) % len(QUERIES)
     try:
-        raw = _read_search(key, market, phrase)
+        result = _read_search(key, market, phrase)
     except (HTTPError, URLError, ValueError, OSError, TimeoutError) as error:
-        print(f"BRIGHT SEARCH: {market} request failed: {type(error).__name__}")
+        if isinstance(error, HTTPError):
+            print(f"BRIGHT SEARCH: {market} HTTP {error.code}; check dataset permission/quota")
+        else:
+            print(f"BRIGHT SEARCH: {market} {type(error).__name__}; request not confirmed")
         return []
-    posts = {}
-    for row in raw:
-        offer = normalize(row, now)
-        if offer:
-            posts[offer["link"]] = offer
-    print(f"BRIGHT SEARCH: {len(posts)} dated EUR Amazon listings, "
-          f"market {market}, query='{phrase}'; not checkout-verified")
-    return list(posts.values())
+    if isinstance(result, dict) and result.get("snapshot_id"):
+        state["brightdata_search_pending"] = {
+            "id": result["snapshot_id"], "market": market, "query": phrase,
+            "started": now.isoformat(timespec="seconds"), "attempts": 0,
+        }
+        print(f"BRIGHT SEARCH: {market} query submitted, awaiting snapshot")
+        return []
+    # Legacy in-memory test adapters may return synchronous normalized rows.
+    if isinstance(result, list):
+        return _normalized(result, now)
+    return []
