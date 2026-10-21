@@ -228,6 +228,48 @@ class MerchantTests(unittest.TestCase):
                          "RETAILER_LISTING_RRP_UNVERIFIED_PDP")
         self.assertEqual(rows[0]["direct_claimed_percent"], 44)
 
+    def test_cdiscount_blocked_listing_and_pdp_share_daily_budget(self):
+        listing = '<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>'
+        def blocked(url, shop):
+            if shop == "Cdiscount":
+                raise HTTPError(url, 403, "blocked", {}, None)
+            return "<html>no Joybuy cards</html>"
+        def unlocked(url):
+            return html_product("Chaise Bauhaus moderne",90.99,CD) if url == CD else listing
+        state = {}
+        with patch.dict(os.environ, {
+            "BRIGHTDATA_API_TOKEN":"mock-token", "BRIGHTDATA_UNLOCKER_ZONE":"mock-zone",
+        }), patch.object(retailer_direct,"_fetch_page",side_effect=blocked), \
+             patch.object(retailer_direct,"_fetch_cdiscount_with_provider",
+                          side_effect=unlocked) as provider:
+            rows = retailer_direct.discover(state,env={
+                "RETAIL_DIRECT_ENABLED":"true",
+                "RETAIL_PRODUCT_CHECKS_PER_SHOP":"1",
+                "BRIGHTDATA_CDISCOUNT_MAX_DAILY":"2",
+            },now=NOW)
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]["direct_source"],"Cdiscount Direct")
+        self.assertEqual(provider.call_count,2)
+        self.assertEqual(state["cdiscount_unlocker_usage"]["count"],2)
+
+    def test_cdiscount_blocked_pdp_does_not_overrun_daily_budget(self):
+        listing = '<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>'
+        with patch.dict(os.environ, {
+            "BRIGHTDATA_API_TOKEN":"mock-token", "BRIGHTDATA_UNLOCKER_ZONE":"mock-zone",
+        }), patch.object(retailer_direct,"_fetch_page",
+                          side_effect=HTTPError(CD,403,"blocked",{},None)), \
+             patch.object(retailer_direct,"_fetch_cdiscount_with_provider",
+                          return_value=listing) as provider:
+            state={}
+            rows=retailer_direct.discover(state,env={
+                "RETAIL_DIRECT_ENABLED":"true",
+                "RETAIL_PRODUCT_CHECKS_PER_SHOP":"1",
+                "BRIGHTDATA_CDISCOUNT_MAX_DAILY":"1",
+            },now=NOW)
+        self.assertEqual(rows,[])
+        self.assertEqual(provider.call_count,1)
+        self.assertEqual(state["cdiscount_unlocker_usage"]["count"],1)
+
     def test_bounded_direct_scans_and_error_handling(self):
         cdoc=('<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>')
         jdoc=('<a href="'+JB+'">44% off HyperX Cloud €27.99 RRP €49.99</a>')
