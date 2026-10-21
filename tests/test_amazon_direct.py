@@ -152,6 +152,65 @@ class DirectDiscoveryTests(unittest.TestCase):
         self.assertEqual(len(seen), 6)
         self.assertLessEqual(len(posts), 6)
 
+    def test_market_rotation_does_not_starve_germany_spain_italy(self):
+        env = {
+            "AMAZON_CREATORS_CLIENT_ID":"mock", "AMAZON_CREATORS_CLIENT_SECRET":"mock",
+            "AMAZON_PARTNER_TAG_FR":"tagfr", "AMAZON_PARTNER_TAG_DE":"tagde",
+            "AMAZON_PARTNER_TAG_ES":"tages", "AMAZON_PARTNER_TAG_IT":"tagit",
+            "DIRECT_MAX_QUERIES":"4", "DIRECT_WATCH_BATCHES":"0",
+        }
+        with patch.object(amazon_direct,"get_token",return_value="token"), \
+             patch.object(amazon_direct,"search_items",return_value={
+               "searchResult":{"items":[]}}) as search:
+            result=amazon_direct.discover({},env=env,sleep_between=0)
+        self.assertEqual(result,[])
+        self.assertEqual([call.args[1] for call in search.call_args_list],
+                         ["amazon.fr","amazon.de","amazon.es","amazon.it"])
+
+    def test_getitems_uses_actual_itemResults_response(self):
+        env={
+            "AMAZON_CREATORS_CLIENT_ID":"mock", "AMAZON_CREATORS_CLIENT_SECRET":"mock",
+            "AMAZON_PARTNER_TAG_DE":"tagde",
+            "DIRECT_MAX_QUERIES":"1", "DIRECT_WATCH_BATCHES":"1",
+        }
+        state={}
+        amazon_direct.add_watchlist(state,["https://amazon.de/dp/B0B9C4DKKG"])
+        item={
+            "asin":"B0B9C4DKKG",
+            "itemInfo":{"title":{"displayValue":"Samsung SSD 990 Pro 2TB"}},
+            "offersV2":{"listings":[{
+              "condition":{"value":"New"},
+              "price":{"money":{"currency":"EUR","amount":59.99}},
+              "isBuyBoxWinner":True,
+              "availability":{"type":"IN_STOCK"}
+            }]}
+        }
+        with patch.object(amazon_direct,"get_token",return_value="token"), \
+             patch.object(amazon_direct,"search_items",
+                          return_value={"searchResult":{"items":[]}}), \
+             patch.object(amazon_direct,"get_items",
+                          return_value={"itemResults":{"items":[item]}}) as get:
+            found=amazon_direct.discover(state,env=env,sleep_between=0)
+        self.assertEqual(get.call_count,1)
+        self.assertEqual(len(found),1)
+        self.assertEqual(found[0]["direct_current_eur"],59.99)
+
+    def test_fast_crash_detected_after_single_earlier_quote(self):
+        from datetime import timedelta
+        now=datetime(2026,10,21,12,tzinfo=timezone.utc).timestamp()
+        item={"link":"https://amazon.fr/dp/B0B9C4DKKG","direct_current_eur":19.99}
+        history={item["link"]:[[now-90,199.99]]}
+        drop=amazon_direct.observe_price(history,item,now)
+        self.assertGreaterEqual(drop,89)
+        self.assertEqual(history[item["link"]][-1][1],19.99)
+        # An old, expired quote must not trigger a bogus low-price alert.
+        old={item["link"]:[[now-58*60,199.99]]}
+        self.assertIsNone(amazon_direct.observe_price(old,item,now))
+        # Consecutive checks less than one minute apart also do not pretend
+        # to provide an independently timed observation.
+        recent={item["link"]:[[now-10,199.99]]}
+        self.assertIsNone(amazon_direct.observe_price(recent,item,now))
+
     def test_native_amazon_index_not_mislabelled_as_rss_article(self):
         offer = {
           "title": "Samsung SSD 990 PRO -30%", "description": "", "content": "",
