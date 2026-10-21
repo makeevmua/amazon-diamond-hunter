@@ -16,3 +16,65 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run Python unit tests
         run: python3 -m unittest discover -s tests -v
+      - name: Live retailer storefront connectivity (2 public pages, no secrets)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import retailer_direct
+          for shop in ("Cdiscount", "Joybuy"):
+              url=retailer_direct.PAGES[shop][0]
+              try:
+                  page=retailer_direct._fetch_page(url,shop)
+                  parser=retailer_direct.ProductLinks(url)
+                  parser.feed(page)
+                  print(f"RETAIL CONNECTIVITY: {shop}: HTML retrieved, {len(parser.links)} direct product links")
+                  if shop=="Cdiscount":
+                      try:
+                          alt=retailer_direct.PAGES["Cdiscount"][1]
+                          alt_html=retailer_direct._fetch_page(alt,shop)
+                          alt_parser=retailer_direct.ProductLinks(alt)
+                          alt_parser.feed(alt_html)
+                          print("CD SEARCH PAGE:",len(alt_parser.links),"direct product links")
+                      except Exception as err:
+                          print("CD SEARCH PAGE: unavailable",type(err).__name__)
+                      import re
+                      print("CD DIAGNOSTIC: candidate f- strings", len(re.findall(r"f-[a-zA-Z0-9-]+\\.html",page)))
+                      print("CD DIAGNOSTIC: hrefs",len(re.findall(r"href=",page,re.I)))
+                      print("CD DIAGNOSTIC: HTML length",len(page))
+                      print("CD DIAGNOSTIC: normalized shop hrefs",len(re.findall(r"https?://(?:www\\.)?cdiscount\\.com/",page,re.I)))
+                  else:
+                      # Observe real product detail for data extraction, without price posting.
+                      if parser.links:
+                          detail, teaser=parser.links[0]
+                          try:
+                              print("JOYBUY EXAMPLE URL",detail[:180])
+                              print("JOYBUY TEASER",teaser[:380])
+                              print("JOYBUY TEASER END",teaser[-370:])
+                              raw=html if False else page
+                              look=re.search(r'<a[^>]*href=["\']([^"\']*\\/dp\\/[^"\']+)',raw,re.I)
+                              if look:
+                                  text_after=re.sub(r"<[^>]+>"," ",raw[look.start():look.start()+2200])
+                                  text_after=re.sub(r"\\s+"," ",text_after)
+                                  print("JOYBUY CARD CONTEXT",text_after[:1100])
+                              html=retailer_direct._fetch_page(detail,shop)
+                              print("JOYBUY PDP: bytes",len(html),"JSON-LD", "application/ld+json" in html)
+                              rec=retailer_direct._retailer_product(detail,html,shop,__import__('datetime').datetime.now(__import__('datetime').timezone.utc),teaser)
+                              print("JOYBUY PDP: qualified offer", bool(rec))
+                              print("JOYBUY OFFER: observed", bool(rec),
+                                    "price", rec.get("direct_current_eur") if rec else None,
+                                    "percent", rec.get("direct_claimed_percent") if rec else None)
+                              import re
+                              for marker in ('__NEXT_DATA__','__NUXT__','application/json','product:price:amount','og:price:amount','itemprop="price"','skuInfo','skuPrice','originPrice','originalPrice','salePrice','sale_price','priceInfo','retailPrice','productInfo','sellingPrice','productId','dataLayer'):
+                                  print("JOYBUY META", marker, marker.lower() in html.lower())
+                              for term in ("originalPrice","salePrice","priceInfo","skuPrice","productId"):
+                                  hit=re.search(re.escape(term),html,re.I)
+                                  if hit:
+                                      snippet=html[max(0,hit.start()-75):hit.start()+180]
+                                      snippet=re.sub(r'[^A-Za-z0-9{}:.,\"€$ _-]',' ',snippet)
+                                      print("JOYBUY SNIPPET",term,snippet[:240])
+                          except Exception as err:
+                              print("JOYBUY PDP: unavailable",type(err).__name__)
+              except Exception as error:
+                  print(f"RETAIL CONNECTIVITY: {shop}: unavailable ({type(error).__name__})")
+          PY

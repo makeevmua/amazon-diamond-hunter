@@ -1,0 +1,425 @@
+"""Direct Cdiscount and Joybuy storefront discovery, without forum middlemen.
+
+This is a polite, bounded HTML/JSON-LD adapter. It only follows exact product
+URLs discovered on those shops' OWN public offer pages. A page that blocks
+automation produces zero offers; no bypass, proxies, fabricated price or
+cross-store redirects. Listing RRP/saving claims are NOT independent history.
+"""
+import html
+import json
+import os
+import re
+from datetime import datetime, timezone
+from email.utils import format_datetime
+from html.parser import HTMLParser
+from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin, urlsplit, quote
+from urllib.request import Request, urlopen
+
+import policy
+import retail_scope
+
+PAGES = {
+    "Cdiscount": ("https://www.cdiscount.com/",
+                  "https://www.cdiscount.com/search/10/lego.html",
+                  "https://www.cdiscount.com/search/10/ssd.html",
+                  "https://www.cdiscount.com/search/10/playstation.html",
+                  "https://www.cdiscount.com/search/10/lampe.html",
+                  "https://www.cdiscount.com/search/10/aspirateur.html",
+                  "https://www.cdiscount.com/search/10/bureau.html"),
+    "Joybuy": ("https://www.joybuy.fr/marketing/lightning-offers?renderStyle=bottom_flow",
+               "https://www.joybuy.fr/"),
+}
+USER_AGENT = "DiamondHunter/3.0 (public-price-observation)"
+SALE = re.compile(r"(?:-|−)\s*(\d{2})\s*%|(\d{2})\s*%\s*(?:off|de réduction|réduction)", re.I)
+EURO_SUFFIX = re.compile(r"(?<!\d)(\d{1,6}(?:[ .\u00a0]\d{3})*(?:[.,]\d{1,2})?)\s*€(\d{2})?(?!\d)", re.I)
+EURO_PREFIX = re.compile(r"€\s*(\d{1,6}(?:[ .\u00a0]\d{3})*(?:[.,]\d{1,2})?)", re.I)
+LD_TYPE = {"Product", "https://schema.org/Product", "http://schema.org/Product"}
+
+
+def _float(v):
+    if type(v) is bool:
+        return None
+    if isinstance(v, dict):
+        v = v.get("value", v.get("amount"))
+    if isinstance(v, str):
+        v = v.strip().replace("\u00a0", "").replace(" ", "").replace(",", ".").replace("€", "")
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    if 0 < v <= 100000 and v < float("inf"):
+        return round(v, 2)
+    return None
+
+
+class ProductLinks(HTMLParser):
+    def __init__(self, base_url):
+        super().__init__(convert_charrefs=True)
+        self.base = base_url
+        self.active = None
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() == "a":
+            if self.active:
+                self._finish()
+            raw = dict(attrs).get("href") or ""
+            dest = urljoin(self.base, raw)
+            if retail_scope.shop(dest):
+                self.active = {"url": dest, "text": []}
+            else:
+                self.active = None
+        elif self.active and tag.lower() == "img":
+            attrs = dict(attrs)
+            alt = attrs.get("alt")
+            if alt:
+                self.active["text"].append(alt)
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "a" and self.active:
+            self._finish()
+
+    def _finish(self):
+        text = re.sub(r"\s+", " ", " ".join(self.active["text"])).strip()
+        if text:
+            self.links.append((self.active["url"], text[:700]))
+        self.active = None
+
+    def handle_data(self, data):
+        if self.active:
+            self.active["text"].append(data)
+        elif self.links and data.strip():
+            # On Joybuy the price and RRP are sibling elements *after* the
+            # product-name anchor. Include only the next 900 characters,
+            # stopping when the next product link begins.
+            url, old = self.links[-1]
+            if len(old) < 900:
+                self.links[-1] = (url, (old + " " + data.strip())[:900])
+
+
+class ProductJSON(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.script = False
+        self.raw = []
+        self.docs = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "script" and dict(attrs).get("type", "").lower() == "application/ld+json":
+            self.script = True
+            self.raw = []
+
+    def handle_data(self, data):
+        if self.script:
+            self.raw.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "script" and self.script:
+            self.script = False
+            try:
+                self.docs.append(json.loads("".join(self.raw)))
+            except (json.JSONDecodeError, ValueError, TypeError):
+                pass
+
+
+def _products(tree):
+    if isinstance(tree, list):
+        for obj in tree:
+            yield from _products(obj)
+    elif isinstance(tree, dict):
+        kinds = tree.get("@type")
+        kinds = kinds if isinstance(kinds, list) else [kinds]
+        if any(t in LD_TYPE for t in kinds):
+            yield tree
+        for key in ("@graph", "mainEntity"):
+            if key in tree:
+                yield from _products(tree[key])
+
+
+def _listing_fallback(url, teaser, expected_shop, now):
+    """First-party retailer listing quote, NOT a verified product-page price.
+
+    Joybuy exposes price/RRP in a listing card but may not publish product
+    JSON-LD. Only a single card with an explicit matching RRP pair qualifies.
+    The destination is the actual direct PDP on the exact retailer domain.
+    """
+    if retail_scope.shop(url) != expected_shop or len(teaser) > 900:
+        return None
+    # Joybuy often separates the cents in HTML text nodes: "11 , 90 €".
+    # Normalize within one tile BEFORE parsing; otherwise "90 €" is
+    # misread as an unrelated full price.
+    teaser = re.sub(r"(\d)\s*([,.])\s*(\d{2})\s*€", r"\1\2\3 €", teaser)
+    label = re.search(
+        r"(?i)\b(?:RRP|Prix conseill[ée]|Prix initial|Prix de comparaison)\s*:?\s*",
+        teaser,
+    )
+    if not label:
+        return None
+    after = teaser[label.end():]
+    ref_values = [_float(x) for x in EURO_PREFIX.findall(after)]
+    ref_values += [_float(w+"."+c if c else w)
+                   for w,c in EURO_SUFFIX.findall(after)]
+    ref_values = [v for v in ref_values if v]
+    if len(ref_values) != 1:
+        return None
+    ref = ref_values[0]
+    before = teaser[:label.start()]
+    amounts = [_float(x) for x in EURO_PREFIX.findall(before)]
+    amounts += [_float(w+"."+c if c else w)
+                for w,c in EURO_SUFFIX.findall(before)]
+    amounts = [v for v in amounts if v and v < ref]
+    if len(amounts) != 1:
+        # Multiple prices can be bundles, unit prices or unrelated tiles.
+        return None
+    price = amounts[0]
+    pct = round(100 * (ref - price) / ref)
+    if pct < 25:
+        return None
+    claim = SALE.search(teaser)
+    if claim:
+        observed_claim = next(int(x) for x in claim.groups() if x)
+        if abs(observed_claim - pct) > 6:
+            return None
+    title = before
+    title = EURO_PREFIX.sub("", title)
+    title = EURO_SUFFIX.sub("", title)
+    title = SALE.sub("", title)
+    title = re.sub(r"\s+", " ", title).strip(" -|")[:250]
+    if not title or not policy.is_allowed(title):
+        return None
+    origin = "Cdiscount Direct" if expected_shop == "Cdiscount" else "Joybuy Direct"
+    return {
+        "title": title, "description": "", "content": "",
+        "link": url.split("?")[0], "key": url.split("?")[0],
+        "pubDate": format_datetime(now, usegmt=True), "image": "",
+        "direct_source": origin,
+        "direct_current_eur": price, "direct_list_price_eur": ref,
+        "direct_claimed_percent": pct, "direct_observed_drop": None,
+        "direct_merchant": expected_shop, "direct_affiliate_url": url.split("?")[0],
+        "direct_offer_type": "RETAILER_LISTING_RRP_UNVERIFIED_PDP",
+    }
+
+
+def _retailer_product(url, markup, expected_shop, now, teaser=""):
+    if retail_scope.shop(url) != expected_shop or len(markup) > 3_000_000:
+        return None
+    tree = ProductJSON()
+    tree.feed(markup)
+    product = None
+    for root in tree.docs:
+        for p in _products(root):
+            product = p
+            break
+        if product:
+            break
+    if not product:
+        return _listing_fallback(url, teaser, expected_shop, now)
+    name = str(product.get("name") or "").strip()
+    if not name or not policy.is_allowed(name):
+        return None
+    offers = product.get("offers")
+    if isinstance(offers, list):
+        offers = offers[0] if offers else None
+    if not isinstance(offers, dict):
+        return None
+    currency = str(offers.get("priceCurrency", "")).upper()
+    if currency != "EUR":
+        return None
+    availability = str(offers.get("availability") or "").lower()
+    if "outofstock" in availability or "soldout" in availability:
+        return None
+    current = _float(offers.get("price") or offers.get("lowPrice"))
+    if not current:
+        specs = offers.get("priceSpecification") or {}
+        if isinstance(specs, dict):
+            current = _float(specs.get("price"))
+    if not current:
+        return None
+    # Only a same-product explicit crossed/reference amount from listing
+    # qualifies. It is a CLAIM, not verified pre-sale pricing.
+    nums = [_float((whole.replace(" ", "") + "." + cents) if cents else whole) for whole, cents in EURO_SUFFIX.findall(teaser)]
+    nums.extend(_float(x) for x in EURO_PREFIX.findall(teaser))
+    reference = max((n for n in nums if n and n > current * 1.25), default=None)
+    hinted = SALE.search(teaser)
+    pct_claim = max([int(x) for x in hinted.groups() if x] or [0]) if hinted else 0
+    claimed = round(100 * (reference - current) / reference) if reference else 0
+    # Avoid percentages based on unrelated content (empty/generic tiles).
+    if not reference or claimed < 25 or (pct_claim and abs(pct_claim - claimed) > 6):
+        return None
+    store = "Cdiscount Direct" if expected_shop == "Cdiscount" else "Joybuy Direct"
+    image = product.get("image")
+    if isinstance(image, list):
+        image = image[0] if image else ""
+    if isinstance(image, dict):
+        image = image.get("url")
+    image = str(image or "")
+    if not image.startswith("https://") or len(image) > 1200:
+        image = ""
+    return {
+        "title": name[:260], "description": "", "content": "",
+        "link": url.split("?")[0], "key": url.split("?")[0],
+        "pubDate": format_datetime(now, usegmt=True), "image": image,
+        "direct_source": store,
+        "direct_current_eur": current,
+        "direct_list_price_eur": reference,
+        "direct_claimed_percent": claimed,
+        "direct_observed_drop": None,
+        "direct_merchant": expected_shop,
+        "direct_affiliate_url": url.split("?")[0],
+        "direct_offer_type": "RETAILER_PAGE_RRP",
+    }
+
+
+def _fetch_cdiscount_with_provider(url):
+    """Optional Bright Data Web Unlocker for JS/anti-bot pages.
+
+    Requires BOTH token and a pre-configured zone; never silently charge for
+    unlocking pages merely because an Amazon dataset token is present.
+    """
+    token = os.getenv("BRIGHTDATA_API_TOKEN", "")
+    zone = os.getenv("BRIGHTDATA_UNLOCKER_ZONE", "").strip()
+    if not token or not re.fullmatch(r"[a-zA-Z0-9_-]{2,80}", zone):
+        return None
+    if (urlsplit(url).hostname or "").lower() not in ("cdiscount.com", "www.cdiscount.com"):
+        return None
+    body = json.dumps({"url": url, "zone": zone, "format": "raw"}).encode("utf-8")
+    req = Request("https://api.brightdata.com/request", method="POST", data=body,
+                  headers={"Authorization": "Bearer " + token,
+                           "Content-Type": "application/json"})
+    with urlopen(req, timeout=30) as res:
+        decoded = res.read(2_800_000).decode("utf-8", errors="replace")
+    if "<html" not in decoded.lower() and "<a " not in decoded.lower():
+        raise ValueError("Provider did not return HTML")
+    return decoded
+
+
+def _fetch_page(url, expected_shop):
+    """Never follow redirects to other shops, auth pages or deal forums."""
+    encoded = quote(url, safe=":/?=&%-._~")
+    req = Request(encoded, headers={"User-Agent": USER_AGENT,
+                                "Accept": "text/html,application/xhtml+xml"})
+    with urlopen(req, timeout=9) as res:
+        final = res.geturl()
+        # Discovery URLs are category pages; only compare the exact merchant.
+        dest = (urlsplit(final).hostname or "").lower().removeprefix("www.")
+        expected = "cdiscount.com" if expected_shop == "Cdiscount" else "joybuy.fr"
+        if dest not in (expected, "m.joybuy.fr" if expected_shop == "Joybuy" else expected):
+            raise ValueError("Cross-merchant redirect rejected")
+        content_type = res.headers.get("Content-Type", "").lower()
+        if "text/html" not in content_type:
+            raise ValueError("Non-HTML retailer response")
+        raw = res.read(2_800_000)
+    return raw.decode("utf-8", errors="replace")
+
+
+def discover(state, env=None, now=None):
+    env = os.environ if env is None else env
+    if str(env.get("RETAIL_DIRECT_ENABLED", "false")).lower() == "false":
+        return []
+    now = now or datetime.now(timezone.utc)
+    try:
+        per_shop = max(0, min(5, int(env.get("RETAIL_PRODUCT_CHECKS_PER_SHOP", "2"))))
+    except (TypeError, ValueError):
+        per_shop = 2
+    if not per_shop:
+        return []
+    out = {}
+    metrics = state.setdefault("retailer_direct_health", {})
+    try:
+        min_interval = max(300, min(3600, int(env.get("RETAIL_SCAN_INTERVAL_SECONDS", "600"))))
+    except (ValueError, TypeError):
+        min_interval = 600
+    last_checked = state.setdefault("retailer_direct_last_checked", {})
+    for shop in ("Cdiscount", "Joybuy"):
+        last = last_checked.get(shop)
+        if isinstance(last, (float, int)) and 0 <= now.timestamp() - last < min_interval:
+            continue
+        last_checked[shop] = now.timestamp()
+        page_list = PAGES[shop]
+        cursor_key = "retailer_" + shop.lower() + "_cursor"
+        cursor = int(state.get(cursor_key, 0))
+        url = page_list[cursor % len(page_list)]
+        state[cursor_key] = cursor + 1
+        try:
+            markup = _fetch_page(url, shop)
+            parser = ProductLinks(url)
+            parser.feed(markup)
+            links = list(dict.fromkeys(parser.links))
+            # No category preference: try merchant cards advertising >=25%
+            # before full-price links to catch flash offers promptly.
+            def offers_25(teaser):
+                match = SALE.search(teaser)
+                return bool(match and max(int(x) for x in match.groups() if x) >= 25)
+            links.sort(key=lambda row: not offers_25(row[1]))
+        except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
+            print(f"RETAIL DIRECT: {shop} listing unavailable ({type(exc).__name__})")
+            metrics[shop] = {"status": "unavailable", "offers": 0,
+                             "checked_at": now.isoformat(timespec="seconds")}
+            continue
+        if (not links and shop == "Cdiscount" and
+                os.getenv("BRIGHTDATA_API_TOKEN") and
+                os.getenv("BRIGHTDATA_UNLOCKER_ZONE")):
+            # Protect the shared Bright Data free-credit pool.
+            usage = state.setdefault("cdiscount_unlocker_usage", {})
+            day = now.date().isoformat()
+            if usage.get("day") != day:
+                usage.update({"day": day, "count": 0})
+            try:
+                daily_limit = max(0, min(20,
+                    int(env.get("BRIGHTDATA_CDISCOUNT_MAX_DAILY", "8"))))
+            except (ValueError, TypeError):
+                daily_limit = 8
+            if usage["count"] >= daily_limit:
+                print("RETAIL DIRECT: Cdiscount unlocker daily budget exhausted")
+                unlocked = None
+            else:
+                # Reserve the attempt before any potential billable request.
+                usage["count"] += 1
+                try:
+                    unlocked = _fetch_cdiscount_with_provider(url)
+                except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
+                    print(f"RETAIL DIRECT: Cdiscount provider unavailable ({type(exc).__name__})")
+                    unlocked = None
+            try:
+                if unlocked:
+                    parser = ProductLinks(url)
+                    parser.feed(unlocked)
+                    links = list(dict.fromkeys(parser.links))
+                    links.sort(key=lambda row: not offers_25(row[1]))
+                    print(f"RETAIL DIRECT: Cdiscount Bright Data unlocked {len(links)} product links")
+            except (ValueError, TypeError):
+                links = []
+        # Never publish a blocked page or fabricate product records.
+        if not links:
+            metrics[shop] = {"status": "no_product_links", "cards_on_listing": 0,
+                             "offers": 0, "checked_at": now.isoformat(timespec="seconds")}
+            print(f"RETAIL DIRECT: {shop} listing has no direct product URLs.")
+            continue
+        # Deterministic rotation across candidate tiles without extra listing calls.
+        index_key = "retailer_" + shop.lower() + "_item_cursor"
+        start = int(state.get(index_key, 0))
+        checked = 0
+        for k in range(len(links)):
+            if checked >= per_shop:
+                break
+            dest, text = links[(start + k) % len(links)]
+            if retail_scope.shop(dest) != shop:
+                continue
+            checked += 1
+            try:
+                details = _fetch_page(dest, shop)
+                item = _retailer_product(dest, details, shop, now, teaser=text)
+            except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
+                print(f"RETAIL DIRECT: {shop} product unavailable ({type(exc).__name__})")
+                continue
+            if item:
+                out[item["link"]] = item
+        state[index_key] = start + max(1, checked)
+        metrics[shop] = {"status": "scanned", "cards_on_listing": len(links),
+                         "offers": sum(1 for x in out.values() if
+                                       x["direct_source"].startswith(shop)),
+                         "checked_at": now.isoformat(timespec="seconds")}
+        print(f"RETAIL DIRECT: {shop} {metrics[shop]['offers']} qualified pages "
+              f"from {checked} product checks / {len(links)} links")
+    return list(out.values())

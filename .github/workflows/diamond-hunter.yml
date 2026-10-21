@@ -23,6 +23,7 @@ on:
       - 'brightdata_verify.py'
       - 'brightdata_search.py'
       - 'retail_scope.py'
+      - 'retailer_direct.py'
       - 'brightdata_probe.py'
   schedule:
     - cron: "3,18,33,48 * * * *" # Full discovery every 15m
@@ -59,6 +60,8 @@ jobs:
         if: github.event_name == 'push'
         env:
           BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          BRIGHTDATA_CDISCOUNT_MAX_DAILY: '8'
         run: |
           python3 -c 'import os; print("BRIGHT DATA TOKEN:", "CONNECTED" if os.getenv("BRIGHTDATA_API_TOKEN", "").strip() else "NOT CONFIGURED IN GITHUB ACTIONS")'
       - name: Bright Data integration probe
@@ -66,6 +69,8 @@ jobs:
         continue-on-error: true
         env:
           BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          BRIGHTDATA_CDISCOUNT_MAX_DAILY: '8'
         run: python3 brightdata_probe.py
       - name: Dry-run global RSS scan (push, no Telegram)
         if: github.event_name == 'push'
@@ -91,7 +96,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          MIN_DISCOUNT: '50'
+          MIN_DISCOUNT: '25'
           MAX_NOTIFICATIONS: '5'
           DRY_RUN: 'false'
           CATALOG_ENABLED: 'true'
@@ -101,9 +106,13 @@ jobs:
           KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}
           KEEPA_MAX_DEAL_QUERIES_PER_DAY: '64'
           BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          BRIGHTDATA_CDISCOUNT_MAX_DAILY: '8'
           BRIGHTDATA_PER_SCAN: '1'
           BRIGHTDATA_SEARCH_ENABLED: 'true'
           BRIGHTDATA_SEARCH_PER_DAY: '1'
+          RETAIL_DIRECT_ENABLED: 'true'
+          RETAIL_PRODUCT_CHECKS_PER_SHOP: '2'
           AMAZON_CREATORS_CLIENT_ID: ${{ secrets.AMAZON_CREATORS_CLIENT_ID }}
           AMAZON_CREATORS_CLIENT_SECRET: ${{ secrets.AMAZON_CREATORS_CLIENT_SECRET }}
           AMAZON_PARTNER_TAG_FR: ${{ secrets.AMAZON_PARTNER_TAG_FR }}

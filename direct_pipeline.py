@@ -6,9 +6,10 @@ a strictly short-lived cache can be used as a stronger independent signal.
 """
 from urllib.parse import urlsplit
 import policy
+import retail_scope
 
 
-def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=50):
+def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=25):
     """Independently observed Keepa price falls; no Amazon checkout claim."""
     if item.get("direct_source") != "Keepa Deals":
         return None
@@ -17,8 +18,8 @@ def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=
         return None
     categories = category_fn(title)
     if not categories:
-        return None
-    threshold = interior_threshold if "design & interior" in categories else regular_threshold
+        categories = ["other"]
+    threshold = 25
     drop = item.get("keepa_drop90_percent")
     if type(drop) not in (int, float) or drop < threshold:
         return None
@@ -48,21 +49,22 @@ def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=
     }
 
 
-def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=50):
-    if item.get("direct_source") not in ("Amazon Creators API", "Bright Data Amazon Search"):
+def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=25):
+    if item.get("direct_source") not in ("Amazon Creators API", "Bright Data Amazon Search",
+                                         "Cdiscount Direct", "Joybuy Direct"):
         return None
     title = item.get("title", "")
     if not policy.is_allowed(title):
         return None
     categories = category_fn(title)
     if not categories:
-        return None
-    threshold = interior_threshold if "design & interior" in categories else regular_threshold
+        categories = ["other"]
+    threshold = 25
     listed_pct = int(item.get("direct_claimed_percent") or 0)
     observed_pct = int(item.get("direct_observed_drop") or 0)
     # Actual previous observed price is stronger than Amazon's list/reference
     # price. Allow observed 30% drop if the absolute product is relevant.
-    good_direct = listed_pct >= threshold or observed_pct >= max(30, threshold - 10)
+    good_direct = listed_pct >= threshold or observed_pct >= threshold
     if not good_direct:
         return None
     current = item.get("direct_current_eur")
@@ -70,7 +72,7 @@ def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=50)
         return None
     link = item["link"]
     market = (urlsplit(link).hostname or "").lower()
-    if market not in ("amazon.fr", "amazon.de", "amazon.es", "amazon.it"):
+    if retail_scope.shop(link) not in ("Amazon", "Cdiscount", "Joybuy"):
         return None
     claimed_saving = max(0, listed_pct)
     alert_pct = max(claimed_saving, observed_pct)
@@ -79,7 +81,7 @@ def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=50)
         "discount": alert_pct, "pair": None, "priority": alert_pct + 30,
         "market": market, "category": ", ".join(categories),
         "source_only": False, "merchant_comparison": False,
-        "signal": "direct_observed_drop" if observed_pct >= max(30, threshold - 10)
+        "signal": "direct_observed_drop" if observed_pct >= threshold
                   else "direct_amazon_promo",
         "headline_price": current, "public_baseline": None,
         "image": item.get("image"),
@@ -114,6 +116,19 @@ def format_direct_alert(deal):
     market = deal["market"]
     observed = deal.get("direct_observed_pct") or 0
     listed = deal.get("direct_list_pct") or 0
+    if deal.get("source_provider") in ("Cdiscount Direct", "Joybuy Direct"):
+        store = "Cdiscount" if deal["source_provider"] == "Cdiscount Direct" else "Joybuy"
+        ref = deal.get("direct_reference")
+        origin = deal.get("item", {}).get("direct_offer_type", "")
+        price_label = ("Цена из витрины " if origin == "RETAILER_LISTING_RRP_UNVERIFIED_PDP"
+                       else "Цена из карточки ")
+        return (f"🛍️ {store}: ОНЛАЙН-ПРЕДЛОЖЕНИЕ\n{title}\n\n"
+                f"{price_label}{store}: {current:.2f} €\n"
+                f"Разница с заявленной исходной ценой: {listed}%"
+                + (f" (референс {ref:.2f} €)" if ref else "") +
+                f"\nМагазин: {store}\n"
+                "Скидка не подтверждена историей цен; цену карточки, доставку и корзину перепроверь.\n"
+                f"Товар: {deal['amazon']}")
     if deal.get("source_provider") == "Bright Data Amazon Search":
         return (f"🔍 AMAZON SEARCH: ПРЕДПОЛАГАЕМАЯ АКЦИЯ\n{title}\n\n"
                 f"Цена из поисковой выдачи Amazon по Bright Data: {current:.2f} €\n"

@@ -67,7 +67,7 @@ class DiamondTests(unittest.TestCase):
         self.assertIsNone(bot.percent("Samsung -20%", ""))
         self.assertIsNone(bot.percent("Samsung jusqu'à -70%", ""))
 
-    def test_interior_discount_from_25_others_still_50(self):
+    def test_interior_and_tech_both_eligible_at_25(self):
         interior = post("Lampe Bauhaus -30%",
                         "https://www.dealabs.com/bons-plans/lampe",
                         "https://www.amazon.fr/dp/B0B9C4DKKG",
@@ -82,9 +82,9 @@ class DiamondTests(unittest.TestCase):
                               key="int-24")
         with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
             found = bot.candidates([interior, tech, interior_below])
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0]["discount"], 30)
-        self.assertIn("design & interior", found[0]["category"])
+        self.assertEqual(len(found), 2)
+        self.assertTrue(all(x["discount"] == 30 for x in found))
+        self.assertTrue(any("design & interior" in x["category"] for x in found))
 
     def test_multilingual_discount_and_price_pair(self):
         self.assertEqual(bot.percent("Lámpara descuento del 29%", ""), 29)
@@ -188,7 +188,7 @@ class DiamondTests(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["market"], "amazon.it")
 
-    def test_unexpected_diamond_requires_80_percent_and_recognized_brand(self):
+    def test_legacy_surprise_brand_25_percent_rule(self):
         surprise = post("Bosch mystery product -80%",
                         "https://www.dealabs.com/bons-plans/odd",
                         "https://amazon.fr/dp/B0B9C4DKKG")
@@ -200,8 +200,8 @@ class DiamondTests(unittest.TestCase):
                        "https://amazon.fr/dp/B0B9C4DKKG")
         with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
             found = bot.candidates([surprise, plain, too_low])
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0]["category"], "Unexpected Diamond")
+        self.assertEqual(len(found), 2)
+        self.assertTrue(all(x["category"] == "Unexpected Diamond" for x in found))
 
     def test_bauhaus_and_nordic_interior_categories(self):
         cases = [

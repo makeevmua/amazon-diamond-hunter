@@ -265,7 +265,7 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
                  if row["price_scope"] == "keepa_observed_new" else
                  "Bright Data Amazon Search: цена поисковой выдачи, без проверки корзины; скидка от исходной цены"
                  if row["price_scope"] == "brightdata_search_listing" else
-                 "Cdiscount/Joybuy: цена из данных магазина; наличие и доставка требуют проверки"
+                 "Cdiscount/Joybuy: цена из витрины или карточки магазина; оригинальная цена заявлена магазином, корзина и доставка не проверены"
                  if row["price_scope"] in ("cdiscount_direct_observed", "joybuy_direct_observed") else
                  "Цена из сравнения магазинов (не обязательно Amazon)"
                  if row["price_scope"] == "mixed_merchants_unverified"
