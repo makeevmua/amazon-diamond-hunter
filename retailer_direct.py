@@ -146,6 +146,10 @@ def _listing_fallback(url, teaser, expected_shop, now):
     """
     if retail_scope.shop(url) != expected_shop or len(teaser) > 900:
         return None
+    # Joybuy often separates the cents in HTML text nodes: "11 , 90 €".
+    # Normalize within one tile BEFORE parsing; otherwise "90 €" is
+    # misread as an unrelated full price.
+    teaser = re.sub(r"(\\d)\\s*([,.])\\s*(\\d{2})\\s*€", r"\\1\\2\\3 €", teaser)
     label = re.search(
         r"(?i)\b(?:RRP|Prix conseill[ée]|Prix initial|Prix de comparaison)\s*:?\s*",
         teaser,
