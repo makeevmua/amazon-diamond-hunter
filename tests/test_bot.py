@@ -201,7 +201,7 @@ class DiamondTests(unittest.TestCase):
         with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
             found = bot.candidates([surprise, plain, too_low])
         self.assertEqual(len(found), 2)
-        self.assertTrue(all(x["category"] == "Unexpected Diamond" for x in found)))
+        self.assertTrue(all(x["category"] == "Unexpected Diamond" for x in found))
 
     def test_bauhaus_and_nordic_interior_categories(self):
         cases = [
