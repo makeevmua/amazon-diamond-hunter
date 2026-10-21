@@ -12,6 +12,7 @@ import math
 import os
 import re
 from urllib.parse import urlsplit
+from itertools import zip_longest
 import time
 from datetime import datetime, timezone
 from urllib.request import Request, urlopen
@@ -226,7 +227,7 @@ def observe_price(history, item, now_epoch):
     recorded = history.get(key, [])
     valid = [r for r in recorded if isinstance(r, list) and len(r) == 2
              and type(r[0]) in (int, float) and type(r[1]) in (int, float)
-             and 60 <= now_epoch - r[0] <= 23 * 3600 and
+             and 60 <= now_epoch - r[0] <= 55 * 60 and
              0 < r[1] <= 100000]
     latest = max(valid, key=lambda r: r[0]) if valid else None
     decline = (round(100 * (latest[1] - current) / latest[1])
@@ -237,7 +238,7 @@ def observe_price(history, item, now_epoch):
     valid_recent = [r for r in recorded if isinstance(r, list)
                     and len(r) == 2 and type(r[0]) in (int, float)
                     and type(r[1]) in (int, float) and
-                    0 <= now_epoch - r[0] <= 23 * 3600 and
+                    0 <= now_epoch - r[0] <= 55 * 60 and
                     0 < r[1] <= 100000]
     valid_recent.append([int(now_epoch), current])
     history[key] = valid_recent[-32:]
@@ -262,9 +263,13 @@ def discover(state, env=None, now=None, sleep_between=1.1):
     except (ValueError, TypeError):
         limit = 8
     cursor = int(state.get("creators_cursor", 0))
-    market_queries = [(market, q) for market in MARKETS
-                      if env.get("AMAZON_PARTNER_TAG_" + market[-2:].upper())
-                      for q in QUERIES[market]]
+    active = [(market, QUERIES[market]) for market in MARKETS
+              if env.get("AMAZON_PARTNER_TAG_" + market[-2:].upper())]
+    # Interleave markets: a five-query budget must not exclusively scan FR.
+    rounds = zip_longest(*(tuple((market, q) for q in queries)
+                          for market, queries in active))
+    market_queries = [pair for group in rounds for pair in group
+                      if pair is not None]
     if not market_queries:
         return []
     try:
@@ -299,7 +304,7 @@ def discover(state, env=None, now=None, sleep_between=1.1):
             try:
                 rsp = get_items(token, market,
                     env["AMAZON_PARTNER_TAG_" + market[-2:].upper()], ids)
-                for it in ((rsp.get("itemsResult") or {}).get("items") or []):
+                for it in ((rsp.get("itemResults") or {}).get("items") or []):
                     rec = normalize_item(it, market, when)
                     if rec:
                         found[rec["link"]] = rec
@@ -347,11 +352,11 @@ def discover(state, env=None, now=None, sleep_between=1.1):
     stamp = now.timestamp()
     for rec in found.values():
         rec["direct_observed_drop"] = observe_price(history, rec, stamp)
-    # Amazon Creators offer content is time-limited; prune persisted prices.
+    # Amazon Creators offer TTL is 1h; expire cached quotes by 55 minutes.
     for key in list(history):
         history[key] = [r for r in history[key] if
                         isinstance(r, list) and len(r) == 2 and
-                        0 <= stamp - r[0] <= 23 * 3600]
+                        0 <= stamp - r[0] <= 55 * 60]
         if not history[key]:
             del history[key]
     if len(history) > 4000:
