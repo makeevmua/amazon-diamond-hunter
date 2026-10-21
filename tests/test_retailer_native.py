@@ -138,6 +138,33 @@ class MerchantTests(unittest.TestCase):
             JB,"<html>No structured price</html>","Joybuy",NOW,
             teaser="RRP €59.99 €29.99"))
 
+    def test_optional_cdiscount_brightdata_unlocker_with_budget(self):
+        listing = '<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>'
+        def blocked(url, shop):
+            if shop == "Cdiscount" and url != CD:
+                return "<html>blocked listing</html>"
+            if url == CD:
+                return html_product("Chaise Bauhaus moderne",90.99,CD)
+            return "<html>blocked</html>"
+        state = {}
+        with patch.dict(os.environ, {
+            "BRIGHTDATA_API_TOKEN": "mock-token",
+            "BRIGHTDATA_UNLOCKER_ZONE": "mock-zone",
+        }), patch.object(retailer_direct, "_fetch_page", side_effect=blocked), \
+             patch.object(retailer_direct, "_fetch_cdiscount_with_provider", return_value=listing) as unlock:
+            rows=retailer_direct.discover(state,env={
+                "RETAIL_PRODUCT_CHECKS_PER_SHOP":"1",
+                "BRIGHTDATA_CDISCOUNT_MAX_DAILY":"1",
+            },now=NOW)
+            next_rows=retailer_direct.discover(state,env={
+                "RETAIL_PRODUCT_CHECKS_PER_SHOP":"1",
+                "BRIGHTDATA_CDISCOUNT_MAX_DAILY":"1",
+            },now=NOW+timedelta(minutes=20))
+        self.assertEqual(unlock.call_count,1)
+        self.assertEqual(state["cdiscount_unlocker_usage"]["count"],1)
+        self.assertEqual(len(rows),1)
+        self.assertEqual(len(next_rows),0)
+
     def test_bounded_direct_scans_and_error_handling(self):
         cdoc=('<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>')
         jdoc=('<a href="'+JB+'">44% off HyperX Cloud €27.99 RRP €49.99</a>')
