@@ -319,6 +319,12 @@ def discover(state, env=None, now=None):
             parser = ProductLinks(url)
             parser.feed(markup)
             links = list(dict.fromkeys(parser.links))
+            # No category preference: try merchant cards advertising >=25%
+            # before full-price links to catch flash offers promptly.
+            def offers_25(teaser):
+                match = SALE.search(teaser)
+                return bool(match and max(int(x) for x in match.groups() if x) >= 25)
+            links.sort(key=lambda row: not offers_25(row[1]))
         except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
             print(f"RETAIL DIRECT: {shop} listing unavailable ({type(exc).__name__})")
             metrics[shop] = {"status": "unavailable", "offers": 0,
