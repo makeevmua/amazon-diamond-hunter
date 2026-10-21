@@ -117,14 +117,14 @@ def format_direct_alert(deal):
         changed = deal.get("keepa_changed_at") or "не указано"
         kind = ("Amazon" if deal.get("keepa_price_type") == "amazon"
                 else "новый товар у продавцов маркетплейса")
-        return (f"⚡ KEEPA: СВЕЖЕЕ ПАДЕНИЕ ЦЕНЫ\\n{title}\\n\\n"
-                f"Цена по Keepa ({kind}): {current:.2f} €\\n"
+        return (f"⚡ KEEPA: СВЕЖЕЕ ПАДЕНИЕ ЦЕНЫ\n{title}\n\n"
+                f"Цена по Keepa ({kind}): {current:.2f} €\n"
                 f"Ниже средней за 90 дней на {deal['discount']}% "
-                f"(средняя {reference:.2f} €)\\n"
-                f"Изменение зафиксировано: {changed}\\n"
-                f"Регион: {market}\\n"
-                "Не подтверждено в корзине Amazon, доставка во Францию не проверена.\\n"
-                f"Открыть: {deal['amazon']}\\n"
+                f"(средняя {reference:.2f} €)\n"
+                f"Изменение зафиксировано: {changed}\n"
+                f"Регион: {market}\n"
+                "Не подтверждено в корзине Amazon, доставка во Францию не проверена.\n"
+                f"Открыть: {deal['amazon']}\n"
                 "⚠️ Данные Keepa могут поступать с задержкой.")
     if deal["signal"] == "direct_observed_drop":
         intro = "⚡ AMAZON: ЦЕНА УПАЛА ПРИ ПРЯМОЙ ПРОВЕРКЕ"
