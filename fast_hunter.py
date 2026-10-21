@@ -18,6 +18,7 @@ import media
 import bot
 import keepa_discovery
 import brightdata_verify
+import brightdata_search
 
 
 def _read_state(path):
@@ -41,6 +42,7 @@ def scan(state, deliver):
     docs = amazon_direct.discover(state) if amazon_direct.enabled() else []
     amazon_direct.add_watchlist(state, [doc["link"] for doc in docs])
     docs.extend(keepa_discovery.discover(state, requests_per_scan=1))
+    docs.extend(brightdata_search.discover(state))
     recent = state.setdefault("worker_alert_state", {})
     sent = 0
     try:
@@ -59,7 +61,8 @@ def scan(state, deliver):
                 bot.MIN_DISCOUNT)
         if candidate:
             candidate_list.append(candidate)
-    checks = brightdata_verify.verify(candidate_list[:4], state)
+    checks = brightdata_verify.verify([d for d in candidate_list if
+                       d.get("source_provider") == "Keepa Deals"][:4], state)
     for candidate in candidate_list:
         verified = checks.get(candidate["amazon"])
         if verified and abs(verified["price_eur"]-candidate["headline_price"]) > (
@@ -99,7 +102,7 @@ def scan(state, deliver):
 
 
 def main():
-    if not amazon_direct.enabled() and not os.getenv("KEEPA_API_KEY"):
+    if not amazon_direct.enabled() and not os.getenv("KEEPA_API_KEY") and not os.getenv("BRIGHTDATA_API_TOKEN"):
         print("FAST HUNTER: configure either Keepa API key or Amazon Creators access.",
               file=sys.stderr)
         return 2
