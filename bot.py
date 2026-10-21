@@ -25,6 +25,8 @@ import pepper
 import observations
 import pricechecks
 import catalog_ui
+import amazon_direct
+import direct_pipeline
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -926,15 +928,27 @@ def run():
         not os.getenv("TELEGRAM_CHAT_ID")
     ):
         raise RuntimeError("Create Telegram bot and set both Actions secrets first.")
+    # First-party Amazon discovery runs before any community search latency.
+    seen = get_seen()
+    meta = seen.setdefault("__metadata__", {})
+    first_party = amazon_direct.discover(meta) if os.getenv(
+        "DIRECT_AMAZON_ENABLED", "true").lower() == "true" else []
     posts, available, requested = collect()
+    SCAN_STATS["amazon_direct"] = len(first_party)
+    # These products were actually read from the Amazon catalog, not
+    # discovered via a deal-sharing website. Preserve provenance.
+    posts = [*first_party, *[post for post in posts if
+              post.get("link") not in {p["link"] for p in first_party}]]
     before_scope_filter = len(posts)
     posts = [item for item in posts if policy.is_allowed(item.get("title"), item.get("description"))]
     print(f"PRODUCT POLICY: {before_scope_filter - len(posts)} unwanted Xbox/Samsung listings excluded.")
-    seen = get_seen()
-    meta = seen.setdefault("__metadata__", {})
     history = meta.setdefault("public_offer_history", {})
     notified_prices = meta.setdefault("notified_offer_prices", {})
-    found = candidates(posts, history)
+    community = candidates([post for post in posts if not post.get("direct_source")], history)
+    native = [deal for item in first_party if
+              (deal := direct_pipeline.to_candidate(item, category_matches,
+                  INTERIOR_DISCOUNT, MIN_DISCOUNT))]
+    found = direct_pipeline.merge_candidates(community, native)
     if CATALOG_ENABLED:
         catalog_records = catalog.collect_records(
             posts, found, category_matches, percent, price_pair,
@@ -1083,7 +1097,12 @@ def run():
                 + f"Первоисточник: {item['link']}\n\n"
                 + "Проверь цену, доставку в FR, продавца, состояние товара и график Keepa."
             )
-        buttons = alerts.deal_buttons(deal["amazon"], item["link"])
+        if deal.get("direct_offer"):
+            message = direct_pipeline.format_direct_alert(deal)
+        buttons = alerts.deal_buttons(deal["amazon"],
+                  None if deal.get("direct_offer") else item["link"])
+        if deal.get("direct_offer") and buttons:
+            buttons["inline_keyboard"][0][0]["url"] = deal["direct_affiliate_url"]
         photo = media.safe_image_url(deal.get("image"))
         # Fetch only the ORIGINAL deal article for OG image, never Google Images
         # or guessed Amazon image/ASIN URLs. Bounded per scan.
