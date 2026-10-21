@@ -40,6 +40,10 @@ def record_public_changes(rows, db_path, now=None):
         ensure(db)
         new = 0
         for row in rows:
+            if row.get("price_scope") == "amazon_creators_featured_new":
+                # Creators API offer data must not enter the 60-day public
+                # post-price history. A 23h expiring cache is in seen.json.
+                continue
             amount = row.get("advertised_price_eur")
             if isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount <= 0:
                 continue
