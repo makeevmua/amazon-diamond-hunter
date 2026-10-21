@@ -61,6 +61,7 @@ class ProductPolicyTests(unittest.TestCase):
             "FINO Masque capillaire Premium Touch 230 g",
             "Fino hair mask Premium Touch",
             "Shampooing cheveux secs",
+            "Shampoing Kérastase cheveux secs",
             "Après-shampoing soin cheveux",
             "Hair dryer Dyson Supersonic",
             "Lisseur cheveux GHD",
