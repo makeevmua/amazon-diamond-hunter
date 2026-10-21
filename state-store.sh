@@ -52,7 +52,7 @@ backup() {
   cp seen.json "${worktree}/state/seen.json"
   git -C "${worktree}" config user.name "github-actions[bot]"
   git -C "${worktree}" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-  git -C "${worktree}" add state/catalog.sqlite state/seen.json
+  git -C "${worktree}" add -f state/catalog.sqlite state/seen.json # .gitignore excludes these by basename
   if git -C "${worktree}" diff --cached --quiet; then
     echo "STATE: snapshot unchanged"
     return 0
