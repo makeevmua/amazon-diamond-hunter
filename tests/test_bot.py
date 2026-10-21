@@ -31,12 +31,12 @@ class DiamondTests(unittest.TestCase):
         self.assertEqual(bot.percent(item["title"], item["description"]), 70)
         self.assertTrue(bot.relevant(item["title"], item["description"]))
 
-    def test_direct_amazon_all_three_marketplaces(self):
-        for suffix in ("fr", "es", "it"):
+    def test_direct_amazon_all_four_marketplaces(self):
+        for suffix in ("fr", "de", "es", "it"):
             source = "https://www.amazon." + suffix + "/dp/B0B9C4DKKG?tag=demo"
             self.assertEqual(bot.find_amazon_link(source),
                              "https://amazon." + suffix + "/dp/B0B9C4DKKG")
-        self.assertIsNone(bot.find_amazon_link("https://www.amazon.de/dp/B0B9C4DKKG"))
+        self.assertIsNone(bot.find_amazon_link("https://www.amazon.com/dp/B0B9C4DKKG"))
         self.assertIsNone(bot.find_amazon_link("https://evilamazon.fr/dp/B0B9C4DKKG"))
         self.assertIsNone(bot.find_amazon_link("https://amazon.fr.evil.com/dp/B0B9C4DKKG"))
 
@@ -393,7 +393,7 @@ class DiamondTests(unittest.TestCase):
 
     def test_configuration(self):
         self.assertEqual(tuple(bot.MARKETS),
-                         ("amazon.fr", "amazon.es", "amazon.it"))
+                         ("amazon.fr", "amazon.de", "amazon.es", "amazon.it"))
         self.assertEqual(bot.REPORT_HOUR, 21)
 
 

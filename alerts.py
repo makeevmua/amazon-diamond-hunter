@@ -60,7 +60,7 @@ def _allowed_amazon_url(value):
     try:
         p = urlsplit(value)
         return (p.scheme == "https" and p.username is None and p.password is None
-                and p.hostname in ("amazon.fr", "amazon.es", "amazon.it")
+                and p.hostname in ("amazon.fr", "amazon.de", "amazon.es", "amazon.it")
                 and p.path.startswith("/dp/") and p.port in (None, 443))
     except ValueError:
         return False
@@ -75,6 +75,7 @@ def _allowed_source_url(value):
                     "dealabs.com", "www.dealabs.com",
                     "lesnumeriques.com", "www.lesnumeriques.com",
                     "chollometro.com", "www.chollometro.com",
+                    "mydealz.de", "www.mydealz.de",
                     "quantospendo.app", "www.quantospendo.app",
                     "brickset.com", "www.brickset.com",
                 ))

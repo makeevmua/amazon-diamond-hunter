@@ -13,7 +13,7 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-MARKETS = {"amazon.fr": 4, "amazon.it": 8, "amazon.es": 9}
+MARKETS = {"amazon.fr": 4, "amazon.de": 3, "amazon.it": 8, "amazon.es": 9}
 ASIN = re.compile(r"^/dp/([A-Z0-9]{10})$", re.I)
 MAX_CHECKS = 6
 MAX_AGE_MINUTES = 48 * 60

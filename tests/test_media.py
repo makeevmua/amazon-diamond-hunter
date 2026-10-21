@@ -30,10 +30,11 @@ class Response:
 
 
 class MediaTests(unittest.TestCase):
-    def test_only_three_approved_amazon_countries(self):
+    def test_only_four_approved_amazon_countries(self):
         brickset = sorted(url for url in bot.FEEDS
                           if "brickset.com/feed/amazon/" in url)
         self.assertEqual(brickset, [
+            "https://brickset.com/feed/amazon/de",
             "https://brickset.com/feed/amazon/es",
             "https://brickset.com/feed/amazon/fr",
             "https://brickset.com/feed/amazon/it",

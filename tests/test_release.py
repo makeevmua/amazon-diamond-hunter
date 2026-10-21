@@ -86,7 +86,7 @@ class ReleaseTests(unittest.TestCase):
             observations.record_keepa([sample], db)
             dest = Path(temp) / "web"
             catalog.export(db, dest)
-            result = catalog_ui.enhance(dest, db)
+            result = catalog_ui.enhance(dest, db, source_health={"rss_ok": 22, "rss_total": 24, "pepper": 20, "rss_unavailable": []})
             self.assertEqual(result, {"cards": 1, "keepa": 1})
             html = (dest / "index.html").read_text("utf8")
             payload = json.loads((dest / "finds.json").read_text("utf8"))
@@ -95,6 +95,8 @@ class ReleaseTests(unittest.TestCase):
             self.assertIn('data-tab="keepa"', html)
             self.assertIn("localStorage", html)
             self.assertIn("Keepa", html)
+            self.assertIn("22/24", html)
+            self.assertEqual(payload["source_health"]["pepper"], 20)
             self.assertIn("не история Amazon", html)
             self.assertEqual(len(payload["offers"][0]["public_price_changes"]), 2)
             self.assertEqual(payload["offers"][0]["keepa"]["price_type"], "amazon")
