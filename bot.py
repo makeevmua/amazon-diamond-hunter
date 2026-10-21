@@ -31,9 +31,9 @@ FEEDS = [
     "https://www.dealabs.com/rss/groupe/image-son-video",
     "https://www.dealabs.com/rss/groupe/telephonie",
     # Additional thematic feeds documented by public Dealabs RSS integrations.
-    "https://www.dealabs.com/rss/groupe/maison-jardin",
+    "https://www.dealabs.com/rss/groupe/jardin-bricolage",
     "https://www.dealabs.com/rss/groupe/jeux-jouets",
-    "https://www.dealabs.com/rss/groupe/hygiene-sante-cosmetiques",
+    "https://www.dealabs.com/rss/groupe/sante-et-cosmetiques",
     "https://www.dealabs.com/rss/groupe/accessoires-gadgets",
     "https://www.dealabs.com/rss/groupe/animaux",
     "https://www.dealabs.com/rss/groupe/culture-divertissement",
