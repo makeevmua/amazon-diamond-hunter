@@ -155,10 +155,12 @@ class MerchantTests(unittest.TestCase):
             rows=retailer_direct.discover(state,env={
                 "RETAIL_PRODUCT_CHECKS_PER_SHOP":"1",
                 "BRIGHTDATA_CDISCOUNT_MAX_DAILY":"1",
+                "RETAIL_DIRECT_ENABLED":"true",
             },now=NOW)
             next_rows=retailer_direct.discover(state,env={
                 "RETAIL_PRODUCT_CHECKS_PER_SHOP":"1",
                 "BRIGHTDATA_CDISCOUNT_MAX_DAILY":"1",
+                "RETAIL_DIRECT_ENABLED":"true",
             },now=NOW+timedelta(minutes=20))
         self.assertEqual(unlock.call_count,1)
         self.assertEqual(state["cdiscount_unlocker_usage"]["count"],1)
