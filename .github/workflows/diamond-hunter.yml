@@ -53,6 +53,12 @@ jobs:
         run: bash state-store.sh restore
       - name: Run unit tests
         run: python3 -m unittest discover -s tests -v
+      - name: Check Bright Data integration status (no network, no billing)
+        if: github.event_name == 'push'
+        env:
+          BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
+        run: |
+          python3 -c 'import os; print("BRIGHT DATA TOKEN:", "CONNECTED" if os.getenv("BRIGHTDATA_API_TOKEN", "").strip() else "NOT CONFIGURED IN GITHUB ACTIONS")'
       - name: Dry-run global RSS scan (push, no Telegram)
         if: github.event_name == 'push'
         env:
