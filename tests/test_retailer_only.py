@@ -47,6 +47,28 @@ class RetailerOnlyTests(unittest.TestCase):
             with self.subTest(title=title):
                 self.assertTrue(policy.is_allowed(title))
 
+    def test_reported_joybuy_products_never_become_alerts_or_catalog_entries(self):
+        import direct_pipeline
+        bad = (
+            "CALVIN KLEIN Icon Boxers coton stretch",
+            "JOYFURNOS Grand Panier à Linge en Bambou",
+            "FINO Masque capillaire Premium Touch 230 g",
+        )
+        for title in bad:
+            with self.subTest(title=title):
+                offer = native(title, "https://www.joybuy.fr/dp/sample-deal/102762790")
+                offer["direct_source"] = "Joybuy Direct"
+                offer["direct_claimed_percent"] = 70
+                self.assertIsNone(
+                    direct_pipeline.to_candidate(offer, bot.category_matches))
+                with patch.dict(os.environ, {"RETAILER_ONLY": "true"}):
+                    rows = catalog.collect_records(
+                        [offer], [], bot.category_matches, bot.percent,
+                        bot.price_pair, lambda _: 10,
+                        lambda _: False, lambda _: True,
+                        bot.find_amazon_link)
+                self.assertEqual(rows, [])
+
     def test_only_exact_product_pages_on_approved_shops(self):
         good = {
             "https://amazon.fr/dp/B0B9C4DKKG":"Amazon",
