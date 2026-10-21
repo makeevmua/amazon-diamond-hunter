@@ -152,7 +152,9 @@ jobs:
   deploy_site:
     name: Publish free deal storefront
     needs: scan
-    if: needs.scan.result == 'success'
+    # A push runs offline tests and a preview only. Never overwrite live
+    # retailer findings/site health with dry-run data from a code deployment.
+    if: needs.scan.result == 'success' && github.event_name != 'push'
     runs-on: ubuntu-latest
     # GitHub Pages may require one-time owner activation in Settings.
     # A deploy problem must not prevent scans and Telegram delivery.
