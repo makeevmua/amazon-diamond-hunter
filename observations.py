@@ -40,7 +40,7 @@ def record_public_changes(rows, db_path, now=None):
         ensure(db)
         new = 0
         for row in rows:
-            if row.get("price_scope") in ("amazon_creators_featured_new", "keepa_observed_new", "brightdata_search_listing"):
+            if row.get("price_scope") in ("amazon_creators_featured_new", "keepa_observed_new", "brightdata_search_listing", "cdiscount_direct_observed", "joybuy_direct_observed"):
                 # Creators API offer data must not enter the 60-day public
                 # post-price history. A 23h expiring cache is in seen.json.
                 continue
