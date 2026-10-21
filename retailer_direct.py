@@ -271,6 +271,29 @@ def _retailer_product(url, markup, expected_shop, now, teaser=""):
     }
 
 
+def _fetch_cdiscount_with_provider(url):
+    """Optional Bright Data Web Unlocker for JS/anti-bot pages.
+
+    Requires BOTH token and a pre-configured zone; never silently charge for
+    unlocking pages merely because an Amazon dataset token is present.
+    """
+    token = os.getenv("BRIGHTDATA_API_TOKEN", "")
+    zone = os.getenv("BRIGHTDATA_UNLOCKER_ZONE", "").strip()
+    if not token or not re.fullmatch(r"[a-zA-Z0-9_-]{2,80}", zone):
+        return None
+    if (urlsplit(url).hostname or "").lower() not in ("cdiscount.com", "www.cdiscount.com"):
+        return None
+    body = json.dumps({"url": url, "zone": zone, "format": "raw"}).encode("utf-8")
+    req = Request("https://api.brightdata.com/request", method="POST", data=body,
+                  headers={"Authorization": "Bearer " + token,
+                           "Content-Type": "application/json"})
+    with urlopen(req, timeout=30) as res:
+        decoded = res.read(2_800_000).decode("utf-8", errors="replace")
+    if "<html" not in decoded.lower() and "<a " not in decoded.lower():
+        raise ValueError("Provider did not return HTML")
+    return decoded
+
+
 def _fetch_page(url, expected_shop):
     """Never follow redirects to other shops, auth pages or deal forums."""
     encoded = quote(url, safe=":/?=&%-._~")
@@ -334,6 +357,19 @@ def discover(state, env=None, now=None):
             metrics[shop] = {"status": "unavailable", "offers": 0,
                              "checked_at": now.isoformat(timespec="seconds")}
             continue
+        if not links and shop == "Cdiscount":
+            # Provider fallback is opt-in: both a token and Web Unlocker
+            # zone must be configured by the account owner.
+            try:
+                unlocked = _fetch_cdiscount_with_provider(url)
+                if unlocked:
+                    parser = ProductLinks(url)
+                    parser.feed(unlocked)
+                    links = list(dict.fromkeys(parser.links))
+                    links.sort(key=lambda row: not offers_25(row[1]))
+                    print(f"RETAIL DIRECT: Cdiscount Bright Data unlocked {len(links)} product links")
+            except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
+                print(f"RETAIL DIRECT: Cdiscount provider unavailable ({type(exc).__name__})")
         if not links:
             metrics[shop] = {"status": "no_product_links", "cards_on_listing": 0,
                              "offers": 0, "checked_at": now.isoformat(timespec="seconds")}
