@@ -49,7 +49,7 @@ def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=
 
 
 def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=50):
-    if item.get("direct_source") != "Amazon Creators API":
+    if item.get("direct_source") not in ("Amazon Creators API", "Bright Data Amazon Search"):
         return None
     title = item.get("title", "")
     if not policy.is_allowed(title):
@@ -89,6 +89,8 @@ def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=50)
         "direct_reference": item.get("direct_list_price_eur"),
         "direct_merchant": item.get("direct_merchant") or "не указан",
         "direct_affiliate_url": item.get("direct_affiliate_url") or link,
+        "source_provider": item.get("direct_source"),
+        "search_snapshot_at": item.get("search_snapshot_at"),
     }
 
 
@@ -112,6 +114,15 @@ def format_direct_alert(deal):
     market = deal["market"]
     observed = deal.get("direct_observed_pct") or 0
     listed = deal.get("direct_list_pct") or 0
+    if deal.get("source_provider") == "Bright Data Amazon Search":
+        return (f"🔍 AMAZON SEARCH: ПРЕДПОЛАГАЕМАЯ АКЦИЯ\n{title}\n\n"
+                f"Цена из поисковой выдачи Amazon по Bright Data: {current:.2f} €\n"
+                f"Разница с исходной/перечёркнутой ценой: {listed}% "
+                "(НЕ историческая скидка).\n"
+                f"Дата снимка источника: {deal.get('search_snapshot_at') or 'неизвестна'}\n"
+                f"Страна: {market}\n"
+                "Цена в корзине, наличие и доставка во Францию не подтверждены.\n"
+                f"Открыть: {deal['amazon']}")
     if deal["signal"] == "keepa_recent_drop":
         reference = deal.get("direct_reference")
         changed = deal.get("keepa_changed_at") or "не указано"
