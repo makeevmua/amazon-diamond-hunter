@@ -64,12 +64,16 @@ def enhance(directory, db_path, source_health=None):
         keepa_count = int(source_health.get("keepa_deals", 0))
         bright_count = int(source_health.get("brightdata_verified", 0))
         search_count = int(source_health.get("brightdata_search", 0))
+        cdiscount_count = int(source_health.get("cdiscount_direct", 0))
+        joybuy_count = int(source_health.get("joybuy_direct", 0))
         watch_asins = int(source_health.get("watch_asins", 0))
         summary = ('<p class="feed-health">Цены Amazon: Creators ' +
                    str(amazon_direct_count) + ' · Keepa Deals ' +
                    str(keepa_count) + ' · Bright Data ' +
                    str(bright_count) + ' сверок · Bright Search ' +
-                   str(search_count) + ' карточек · ASIN под наблюдением: ' +
+                   str(search_count) + ' карточек · Cdiscount ' +
+                   str(cdiscount_count) + ' · Joybuy ' + str(joybuy_count) +
+                   ' · ASIN под наблюдением: ' +
                    str(watch_asins) + ' · RSS: ' + str(rss_ok) + '/' +
                    str(rss_total) + ' · Pepper: ' + str(pepper_received) +
                    ' · итог корзины/доставка не проверены</p>')
