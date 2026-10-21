@@ -4,15 +4,17 @@
   "store": "amazon.fr",
   "currency": "EUR",
   "categories": [
-    "PC components",
-    "gaming peripherals",
-    "consoles and accessories",
-    "video games",
+    "PC components and SSDs",
+    "PC gaming peripherals",
+    "PlayStation consoles and accessories",
+    "Nintendo consoles and accessories",
+    "PC / PlayStation / Nintendo games",
     "VR and gaming gadgets",
-    "smartphones and Apple devices",
-    "TV and audio",
-    "home appliances",
-    "exceptional deals any category"
+    "Apple devices",
+    "TV and audio (excluding Samsung)",
+    "home appliances (excluding Samsung)",
+    "Samsung SSD only",
+    "exceptional deals outside selected categories"
   ],
   "price_after_discount_eur": {
     "min": 0,
@@ -28,8 +30,8 @@
   },
   "preferred_brand_groups": [
     "Apple",
-    "Sony / PlayStation",
-    "Samsung",
+    "Sony / PlayStation (no Xbox)",
+    "Samsung SSD only",
     "LG",
     "ASUS / MSI",
     "Logitech / Razer / Corsair",
@@ -50,7 +52,7 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Extended 16-feed FR/ES/IT free RSS scanner with persistent SQLite finds database, 3-day GitHub artifact downloads, searchable HTML/CSV/JSON. Separate Telegram alerts retain original 25% interior, 50% other and 80% unusual thresholds. Public headline prices, multi-merchant comparisons and availability are NOT verified live Amazon prices.",
+  "note": "Parallel FR/ES/IT RSS scanner with filtered storefront and claimed/unverified discount data. Xbox excluded, Samsung SSD only, PC/PlayStation/Nintendo kept. Discounts are NOT verified current Amazon savings.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -324,7 +326,7 @@
       "United States deal feeds",
       "pan-European feeds containing unwanted countries"
     ],
-    "note": "RSS discovery only, not complete live Amazon catalog coverage. Each feed can be empty or unavailable."
+    "note": "Added themed Dealabs RSS feeds for maison-jardin, jeux-jouets, hygiene-sante-cosmetiques, accessoires-gadgets, animaux and culture-divertissement. Availability is checked per run; no paid private API."
   },
   "findings_database": {
     "enabled": true,
@@ -350,5 +352,11 @@
     "source_price_ambiguity": "Les Numeriques may compare several merchants: article's lowest reported price is never attributed to Amazon automatically.",
     "user_access": "Open the GitHub Actions workflow run and download diamond-findings-<run_id> from Artifacts, then open catalog_export/index.html.",
     "note": "Archive persists across scheduled runs while GitHub Actions cache is available. GitHub cache and downloadable artifacts have retention limits and are not permanent external storage."
+  },
+  "product_exclusions": {
+    "xbox": "exclude consoles, games, subscriptions and Xbox-only accessories (keep PC, PlayStation and Nintendo)",
+    "samsung": "only Samsung solid-state drives (SSD/NVMe/portable SSD), exclude all other Samsung products and Galaxy accessories",
+    "apply_to": "Telegram notifications, new discoveries and previously indexed web storefront cards",
+    "preserve": "all PC and PlayStation gaming and components"
   }
 }
