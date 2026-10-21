@@ -23,7 +23,7 @@ PUBLISHERS = {
 
 def enabled(env=None):
     env = os.environ if env is None else env
-    return str(env.get("RETAILER_ONLY", "true")).lower() != "false"
+    return str(env.get("RETAILER_ONLY", "false")).lower() != "false"
 
 
 def shop(url):
