@@ -44,6 +44,15 @@ jobs:
                               print("JOYBUY PDP: bytes",len(html),"JSON-LD", "application/ld+json" in html)
                               rec=retailer_direct._retailer_product(detail,html,shop,__import__('datetime').datetime.now(__import__('datetime').timezone.utc),teaser)
                               print("JOYBUY PDP: qualified offer", bool(rec))
+                              import re
+                              for marker in ('__NEXT_DATA__','__NUXT__','application/json','product:price:amount','og:price:amount','itemprop="price"','skuInfo','skuPrice','originPrice','originalPrice','salePrice','sale_price','priceInfo','retailPrice','productInfo','sellingPrice','productId','dataLayer'):
+                                  print("JOYBUY META", marker, marker.lower() in html.lower())
+                              for term in ("originalPrice","salePrice","priceInfo","skuPrice","productId"):
+                                  hit=re.search(re.escape(term),html,re.I)
+                                  if hit:
+                                      snippet=html[max(0,hit.start()-75):hit.start()+180]
+                                      snippet=re.sub(r'[^A-Za-z0-9{}:.,\"€$ _-]',' ',snippet)
+                                      print("JOYBUY SNIPPET",term,snippet[:240])
                           except Exception as err:
                               print("JOYBUY PDP: unavailable",type(err).__name__)
               except Exception as error:
