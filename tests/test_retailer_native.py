@@ -270,6 +270,41 @@ class MerchantTests(unittest.TestCase):
         self.assertEqual(provider.call_count,1)
         self.assertEqual(state["cdiscount_unlocker_usage"]["count"],1)
 
+    def test_joybuy_expanded_checks_do_not_expand_cdiscount_budget(self):
+        from urllib.parse import urlsplit
+        products = [
+            "https://www.joybuy.fr/dp/pc-gaming-headset-" + str(i) +
+            "/" + str(102762790+i)
+            for i in range(9)
+        ]
+        listing = "".join(
+            '<a href="' + item + '">Casque gaming -50% €50 RRP €100</a>'
+            for item in products
+        )
+        calls = []
+        def fetch(url, shop):
+            calls.append((url, shop))
+            if shop == "Cdiscount":
+                return "<html>no product cards</html>"
+            if url in products:
+                return html_product("Casque gaming HyperX",50,url)
+            return listing
+        with patch.dict(os.environ, {
+            "BRIGHTDATA_API_TOKEN":"",
+            "BRIGHTDATA_UNLOCKER_ZONE":"",
+        }), patch.object(retailer_direct,"_fetch_page",side_effect=fetch):
+            state = {}
+            results = retailer_direct.discover(state,env={
+                "RETAIL_DIRECT_ENABLED":"true",
+                "RETAIL_PRODUCT_CHECKS_PER_SHOP":"2",
+                "RETAIL_JOYBUY_PRODUCT_CHECKS_PER_SCAN":"6",
+            },now=NOW)
+        self.assertEqual(len(results),6)
+        self.assertEqual(len([c for c in calls if c[1]=="Joybuy" and
+                              c[0] in products]),6)
+        self.assertEqual(state["retailer_joybuy_item_cursor"],6)
+        self.assertEqual(state["retailer_direct_health"]["Joybuy"]["offers"],6)
+
     def test_bounded_direct_scans_and_error_handling(self):
         cdoc=('<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>')
         jdoc=('<a href="'+JB+'">44% off HyperX Cloud €27.99 RRP €49.99</a>')
