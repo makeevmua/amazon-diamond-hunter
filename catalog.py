@@ -10,6 +10,8 @@ import re
 import sqlite3
 import media
 import policy
+import observations
+import hashlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -188,9 +190,12 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
     directory.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as db:
         db.row_factory = sqlite3.Row
+        observations.ensure(db)
         rows = [dict(row) for row in db.execute(
             "SELECT * FROM offers ORDER BY last_seen DESC LIMIT 1500")]
         total = db.execute("SELECT count(*) FROM offers").fetchone()[0]
+        for row in rows:
+            observations.enrich(row, db)
     latest_export = datetime.now(timezone.utc).isoformat(timespec="seconds")
     payload = {
         "exported_at": latest_export,
