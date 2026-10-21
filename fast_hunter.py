@@ -16,6 +16,8 @@ import direct_pipeline
 import alerts
 import media
 import bot
+import keepa_discovery
+import brightdata_verify
 
 
 def _read_state(path):
@@ -36,18 +38,33 @@ def _write_state(path, state):
 def scan(state, deliver):
     """Return notification count; quiet if no fresh qualified Amazon offers."""
     now = time.time()
-    docs = amazon_direct.discover(state)
+    docs = amazon_direct.discover(state) if amazon_direct.enabled() else []
     amazon_direct.add_watchlist(state, [doc["link"] for doc in docs])
+    docs.extend(keepa_discovery.discover(state, requests_per_scan=1))
     recent = state.setdefault("worker_alert_state", {})
     sent = 0
     try:
         max_alerts = max(1, min(int(os.getenv("DIRECT_ALERTS_PER_CYCLE", "4")), 8))
     except ValueError:
         max_alerts = 4
+    candidate_list = []
     for item in docs:
-        candidate = direct_pipeline.to_candidate(item, bot.category_matches,
-                                         bot.INTERIOR_DISCOUNT, bot.MIN_DISCOUNT)
-        if not candidate:
+        if item.get("direct_source") == "Keepa Deals":
+            candidate = direct_pipeline.keepa_candidate(
+                item, bot.category_matches, bot.INTERIOR_DISCOUNT,
+                bot.MIN_DISCOUNT)
+        else:
+            candidate = direct_pipeline.to_candidate(
+                item, bot.category_matches, bot.INTERIOR_DISCOUNT,
+                bot.MIN_DISCOUNT)
+        if candidate:
+            candidate_list.append(candidate)
+    checks = brightdata_verify.verify(candidate_list[:4], state)
+    for candidate in candidate_list:
+        verified = checks.get(candidate["amazon"])
+        if verified and abs(verified["price_eur"]-candidate["headline_price"]) > (
+            candidate["headline_price"] * 0.03):
+            print("FAST HUNTER: conflicting Bright Data price; suppression")
             continue
         key = candidate["amazon"]
         previous = recent.get(key)
@@ -63,6 +80,9 @@ def scan(state, deliver):
             if not (pct_changed or price_changed):
                 continue
         message = direct_pipeline.format_direct_alert(candidate)
+        if verified:
+            message += (f"\nBright Data проверила карточку: {verified['price_eur']:.2f} €."
+                        " Продавец/доставка не проверены.")
         buttons = alerts.deal_buttons(candidate["amazon"])
         if buttons:
             buttons["inline_keyboard"][0][0]["url"] = candidate["direct_affiliate_url"]
@@ -79,8 +99,8 @@ def scan(state, deliver):
 
 
 def main():
-    if not amazon_direct.enabled():
-        print("FAST HUNTER: no approved Amazon Creators API credentials; nothing was started.",
+    if not amazon_direct.enabled() and not os.getenv("KEEPA_API_KEY"):
+        print("FAST HUNTER: configure either Keepa API key or Amazon Creators access.",
               file=sys.stderr)
         return 2
     if not os.getenv("TELEGRAM_BOT_TOKEN") or not os.getenv("TELEGRAM_CHAT_ID"):
@@ -94,7 +114,7 @@ def main():
     state = _read_state(statefile)
     seeded = [x.strip() for x in os.getenv("DIRECT_WATCH_ASINS", "").split(",") if x.strip()]
     amazon_direct.add_watchlist(state, seeded)
-    print(f"FAST HUNTER: direct Amazon worker running every {seconds}s; "
+    print(f"FAST HUNTER: Amazon price data worker running every {seconds}s; "
           "not a guarantee of catching every flash price error.", flush=True)
     def deliver(message, buttons, image):
         bot.telegram_send(message, buttons=buttons, photo_url=image)
