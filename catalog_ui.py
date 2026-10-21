@@ -18,18 +18,29 @@ def _replace_once(text, before, after):
     return text.replace(before, after, 1)
 
 
-def enhance(directory, db_path):
+def enhance(directory, db_path, source_health=None):
     directory = Path(directory)
     html_path = directory / "index.html"
     json_path = directory / "finds.json"
     data = json.loads(json_path.read_text(encoding="utf-8"))
     cards = data.get("offers", [])
+    if source_health:
+        data["source_health"] = source_health
     with sqlite3.connect(db_path) as db:
         observations.ensure(db)
         for row in cards:
             observations.enrich(row, db)
     json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     site = html_path.read_text(encoding="utf-8")
+    if source_health:
+        rss_ok = int(source_health.get("rss_ok", 0))
+        rss_total = int(source_health.get("rss_total", 0))
+        pepper_received = int(source_health.get("pepper", 0))
+        summary = ('<p class="feed-health">Источники RSS: ' +
+                   str(rss_ok) + '/' + str(rss_total) +
+                   ' · Pepper: ' + str(pepper_received) +
+                   ' публикаций · цены предложений не подтверждены Amazon</p>')
+        site = _replace_once(site, '<div class="stats">', summary + '<div class="stats">')
 
     articles = re.findall(r'<article class="card"[^>]*>.*?</article>', site, flags=re.S)
     if len(articles) != len(cards):
@@ -79,6 +90,7 @@ def enhance(directory, db_path):
                          '<button type="button" data-tab="favorites">Избранное ♡</button>'
                          '<button type="button" data-tab="keepa">С Keepa</button>')
     site = _replace_once(site, '</style></head>', """
+.feed-health{font-size:12px;color:#a9c1db;margin:12px 0 6px}
 .favorite{position:absolute;right:10px;bottom:10px;width:36px;height:36px;border-radius:50%;font-size:25px;line-height:1;color:#fff;background:#17243bde;border:1px solid #ffffff60}
 .favorite[aria-pressed=true]{color:#ffca71}
 .keepa-note{font-size:11px;line-height:1.45;color:#86e3c2;margin-top:8px}
