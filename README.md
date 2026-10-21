@@ -1,5 +1,34 @@
 # 💎 Amazon Diamond Hunter FREE — four-market candidate scout
 
+## Amazon-first Hunter — прямой поиск и оперативные уведомления (2026-10-21)
+
+**Новый источник:** официальный Amazon Creators API `SearchItems` ищет новые товары непосредственно в Amazon.fr/.de/.es/.it по сменяющимся запросам (SSD, PlayStation, игры ПК, комплектующие, LEGO, интерьер, Apple и др.). Дополнительный `GetItems` повторно проверяет до 10 точных ASIN в запросе. ASIN из публикаций форумов и Amazon-поиска автоматически добавляются в *список наблюдения*. Обнаружение цены не зависит от того, опубликовал ли её кто-то в Dealabs. Полного перебора миллионов Amazon-товаров нет, поэтому **все короткие ценовые ошибки не гарантируются**.
+
+**Для реальной работы Amazon-first обязателен разрешённый доступ:** Amazon Associates с одобренным Creators API, Credential ID + Secret и Partner Tag для каждого включённого рынка. По документации Amazon порог доступа включает 10 квалифицированных продаж за последние 30 дней; невозможно обещать беспрепятственный бесплатный API для нового аккаунта. Секреты добавить в GitHub → [Settings → Secrets and variables → Actions](https://github.com/makeevmua/amazon-diamond-hunter/settings/secrets/actions):
+- `AMAZON_CREATORS_CLIENT_ID`
+- `AMAZON_CREATORS_CLIENT_SECRET`
+- `AMAZON_PARTNER_TAG_FR`, `AMAZON_PARTNER_TAG_DE`, `AMAZON_PARTNER_TAG_ES`, `AMAZON_PARTNER_TAG_IT` (каждый используемый рынок).
+
+Без этих ключей бот **не делает прямых запросов к Amazon**, а сканирует доверенные сообщества. Наличие кода и 100% локальных тестов не означает доступности API в твоём аккаунте. Нельзя безопасно и бесплатно изобрести эти ключи.
+
+**Расписание GitHub Actions:** основной полный сбор RSS + прямые запросы происходит каждую четверть часа (07/22/37/52). В промежуточные минуты GitHub запускает быстрый сбор с шагом **5 минут** (02/07/12/17/22/27/32/37/42/47/52/57): при наличии API-ключей — Amazon напрямую; без них — только 6 самых быстрых публичных RSS, не все 24. Задержки GitHub Actions возможны; это **не гарантия пяти минут и не решение для ошибок на 1–2 минуты**.
+
+**Для близких к реальному времени оповещений** добавлен самостоятельный сервис `fast_hunter.py`: при наличии ключей и постоянно работающего ПК/VPS/мини-сервера он каждые 60–3600 секунд (по умолчанию 90) обновляет ограниченное число Amazon-поисков и известных ASIN и отправляет Telegram напрямую. Настройку частоты согласовывай с API-квотой. Для установки через Docker:
+
+```bash
+cp .env.hunter.example .env.hunter
+# Заполнить ключи и TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID
+docker compose -f docker-compose.fast-hunter.yml up -d --build
+docker compose -f docker-compose.fast-hunter.yml logs -f
+```
+
+Секреты в файле `.env.hunter` исключены из git, состояние воркера хранится в отдельном Docker volume. Если 90-секундный процесс работает на домашнем ПК, отключение ПК/сна остановит мониторинг. Мгновенный охват всех маркетплейсов Amazon даже на этом интервале **невозможен** при ограниченном бюджете поисковых запросов.
+
+**Качество цен и безопасность:** в Telegram Amazon-first отдельно помечается как «Amazon Creators API», с временем наблюдения в отчётах сканирования; цена — текущее featured NEW предложение из API, а не доказанная финальная цена и не обязательно продавец Amazon. Разница с `savingBasis` — референс Amazon, не реальное падение рынка. Для детекции фактического изменения цены бот хранит короткую временную серию собственных недавних проверок (до 23 часов) и сообщает о значительных изменениях. На сайте первичные данные прямых предложений живут **до 58 минут после последней проверки**, чтобы не показывать старые ценники. Доставка во Францию и корзина не проверяются; для независимой истории сохраняется опциональный Keepa API.
+
+Ссылки: [официальная документация Creators API](https://affiliate-program.amazon.com/creatorsapi/docs/en-us/api-reference/operations/search-items), [GetItems](https://affiliate-program.amazon.com/creatorsapi/docs/en-us/api-reference/operations/get-items), [правила кеширования](https://affiliate-program.amazon.com/creatorsapi/docs/en-us/concepts/best-programming-practices), [ограничения Amazon Associates](https://partenaires.amazon.fr/help/operating/policies/).
+
+
 ## Версия Production — долговременная база, фильтры, цена с источником
 
 - **Плановый поиск**: Pepper GraphQL включён в регулярном сканировании (RSS остаётся резервом); его доступность не гарантируется.
