@@ -60,10 +60,13 @@ def enhance(directory, db_path, source_health=None):
         rss_ok = int(source_health.get("rss_ok", 0))
         rss_total = int(source_health.get("rss_total", 0))
         pepper_received = int(source_health.get("pepper", 0))
-        summary = ('<p class="feed-health">Источники RSS: ' +
-                   str(rss_ok) + '/' + str(rss_total) +
-                   ' · Pepper: ' + str(pepper_received) +
-                   ' публикаций · цены предложений не подтверждены Amazon</p>')
+        amazon_direct_count = int(source_health.get("amazon_direct", 0))
+        watch_asins = int(source_health.get("watch_asins", 0))
+        summary = ('<p class="feed-health">Amazon напрямую: ' +
+                   str(amazon_direct_count) + ' котировок · ASIN в наблюдении: ' +
+                   str(watch_asins) + ' · RSS: ' + str(rss_ok) + '/' +
+                   str(rss_total) + ' · Pepper: ' + str(pepper_received) +
+                   ' публикаций · итоговая цена в корзине не проверена</p>')
         site = _replace_once(site, '<div class="stats">', summary + '<div class="stats">')
 
     articles = re.findall(r'<article class="card"[^>]*>.*?</article>', site, flags=re.S)
