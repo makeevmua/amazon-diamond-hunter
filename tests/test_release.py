@@ -112,7 +112,11 @@ class ReleaseTests(unittest.TestCase):
         workflow = (repo / ".github/workflows/diamond-hunter.yml").read_text("utf8")
         self.assertIn("bash state-store.sh restore", workflow)
         self.assertIn("bash state-store.sh backup", workflow)
-        self.assertIn("KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}", workflow)
+        self.assertIn("KEEPA_API_KEY: ${{ github.event_name != 'push' && secrets.KEEPA_API_KEY || '' }}", workflow)
+        self.assertIn("BRIGHTDATA_API_TOKEN: ${{ github.event_name != 'push' && secrets.BRIGHTDATA_API_TOKEN || '' }}", workflow)
+        self.assertIn("BRIGHTDATA_SEARCH_ENABLED: ${{ github.event_name != 'push' && 'true' || 'false' }}", workflow)
+        self.assertIn("DIRECT_AMAZON_ENABLED: ${{ github.event_name != 'push' && 'true' || 'false' }}", workflow)
+        self.assertIn("[free-retailer-scan]", workflow)
         self.assertIn("PEPPER_GRAPHQL_ENABLED: 'true'", workflow)
 
     def test_keepa_history_missing_never_implies_discount(self):
