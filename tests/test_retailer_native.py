@@ -112,6 +112,17 @@ class MerchantTests(unittest.TestCase):
             JB,bad,"Joybuy",NOW
         ))
 
+    def test_joybuy_live_french_spaced_cents(self):
+        teaser = ("45% de réduction Meilleures ventes celimax "
+                  "Celimax The Vita A Retinal Shot Tightening Booster with Liposomized Retinal "
+                  "4.9 8k+ vendus Offre de bienvenue 11 , 90 € Prix initial: 21 , 90 € "
+                  "Livraison d'ici le demain Vendu par Joybuy")
+        offer = retailer_direct._listing_fallback(JB, teaser, "Joybuy", NOW)
+        self.assertIsNotNone(offer)
+        self.assertEqual(offer["direct_current_eur"], 11.9)
+        self.assertEqual(offer["direct_list_price_eur"], 21.9)
+        self.assertEqual(offer["direct_claimed_percent"], 46)
+
     def test_invalid_price_duplicate_and_unsupported_domain_dropped(self):
         markup=html_product("HyperX Gaming Casque",29.99,JB)
         self.assertIsNone(retailer_direct._retailer_product(
