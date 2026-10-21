@@ -12,6 +12,10 @@ on:
       - 'tests/**'
       - 'preferences-draft.json'
       - '.github/workflows/diamond-hunter.yml'
+      - 'state-store.sh'
+      - 'pricechecks.py'
+      - 'observations.py'
+      - 'catalog_ui.py'
   schedule:
     - cron: "7,22,37,52 * * * *"
     - cron: "0 19,20 * * *" # 21:00 Paris in summer/winter; bot checks local time
@@ -23,6 +27,8 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # publish periodic public snapshots to diamond-data
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +42,8 @@ jobs:
           key: diamond-state-${{ github.run_id }}
           restore-keys: |
             diamond-state-
+      - name: Restore durable catalog if Actions cache is missing
+        run: bash state-store.sh restore
       - name: Run unit tests
         run: python3 -m unittest discover -s tests -v
       - name: Dry-run global RSS scan (push, no Telegram)
@@ -44,7 +52,8 @@ jobs:
           DRY_RUN: 'true'
           CATALOG_ENABLED: 'true'
           EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
-          PEPPER_GRAPHQL_ENABLED: 'true' # Experimental; gracefully falls back to RSS.
+          PEPPER_GRAPHQL_ENABLED: 'true'
+          # Push preview has no real-price key configured.
           MAX_NOTIFICATIONS: '3'
         run: python3 bot.py
       - name: Send Telegram connection test (manual runs only)
@@ -64,6 +73,8 @@ jobs:
           DRY_RUN: 'false'
           CATALOG_ENABLED: 'true'
           EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
+          PEPPER_GRAPHQL_ENABLED: 'true'
+          KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}
         run: python3 bot.py
       - name: Save seen-items cache
         if: success() && github.event_name != 'push'
@@ -73,6 +84,10 @@ jobs:
             seen.json
             catalog.sqlite
           key: diamond-state-${{ github.run_id }}
+      - name: Preserve durable daily catalog snapshot
+        if: success() && github.event_name != 'push'
+        continue-on-error: true
+        run: bash state-store.sh backup
       - name: Publish browsable findings database
         if: success()
         uses: actions/upload-artifact@v4
