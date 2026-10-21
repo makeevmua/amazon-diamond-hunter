@@ -131,6 +131,65 @@ def _products(tree):
                 yield from _products(tree[key])
 
 
+def _listing_fallback(url, teaser, expected_shop, now):
+    """First-party retailer listing quote, NOT a verified product-page price.
+
+    Joybuy exposes price/RRP in a listing card but may not publish product
+    JSON-LD. Only a single card with an explicit matching RRP pair qualifies.
+    The destination is the actual direct PDP on the exact retailer domain.
+    """
+    if retail_scope.shop(url) != expected_shop or len(teaser) > 900:
+        return None
+    label = re.search(
+        r"(?i)\b(?:RRP|Prix conseill[ée]|Prix initial|Prix de comparaison)\s*:?\s*",
+        teaser,
+    )
+    if not label:
+        return None
+    after = teaser[label.end():]
+    ref_values = [_float(x) for x in EURO_PREFIX.findall(after)]
+    ref_values += [_float(w+"."+c if c else w)
+                   for w,c in EURO_SUFFIX.findall(after)]
+    ref = next((x for x in ref_values if x), None)
+    if not ref:
+        return None
+    before = teaser[:label.start()]
+    amounts = [_float(x) for x in EURO_PREFIX.findall(before)]
+    amounts += [_float(w+"."+c if c else w)
+                for w,c in EURO_SUFFIX.findall(before)]
+    amounts = [v for v in amounts if v and v < ref]
+    if len(amounts) != 1:
+        # Multiple prices can be bundles, unit prices or unrelated tiles.
+        return None
+    price = amounts[0]
+    pct = round(100 * (ref - price) / ref)
+    if pct < 25:
+        return None
+    claim = SALE.search(teaser)
+    if claim:
+        observed_claim = next(int(x) for x in claim.groups() if x)
+        if abs(observed_claim - pct) > 6:
+            return None
+    title = before
+    title = EURO_PREFIX.sub("", title)
+    title = EURO_SUFFIX.sub("", title)
+    title = SALE.sub("", title)
+    title = re.sub(r"\s+", " ", title).strip(" -|")[:250]
+    if not title or not policy.is_allowed(title):
+        return None
+    origin = "Cdiscount Direct" if expected_shop == "Cdiscount" else "Joybuy Direct"
+    return {
+        "title": title, "description": "", "content": "",
+        "link": url.split("?")[0], "key": url.split("?")[0],
+        "pubDate": format_datetime(now, usegmt=True), "image": "",
+        "direct_source": origin,
+        "direct_current_eur": price, "direct_list_price_eur": ref,
+        "direct_claimed_percent": pct, "direct_observed_drop": None,
+        "direct_merchant": expected_shop, "direct_affiliate_url": url.split("?")[0],
+        "direct_offer_type": "RETAILER_LISTING_RRP_UNVERIFIED_PDP",
+    }
+
+
 def _retailer_product(url, markup, expected_shop, now, teaser=""):
     if retail_scope.shop(url) != expected_shop or len(markup) > 3_000_000:
         return None
@@ -144,7 +203,7 @@ def _retailer_product(url, markup, expected_shop, now, teaser=""):
         if product:
             break
     if not product:
-        return None
+        return _listing_fallback(url, teaser, expected_shop, now)
     name = str(product.get("name") or "").strip()
     if not name or not policy.is_allowed(name):
         return None
