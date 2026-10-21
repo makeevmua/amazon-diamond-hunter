@@ -972,7 +972,9 @@ def run():
     keepa_offers = (keepa_discovery.discover(meta, requests_per_scan=1)
                    if not DRY_RUN else [])
     search_offers = (brightdata_search.discover(meta)
-                     if not DRY_RUN and not direct_only else [])
+                     if not DRY_RUN and
+                     (not direct_only or bool(meta.get("brightdata_search_pending")))
+                     else [])
     # Prefer the first-party official API over Keepa, and Keepa historic
     # observations over independently scraped Amazon search results.
     direct_offers = []
