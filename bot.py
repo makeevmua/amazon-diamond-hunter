@@ -666,8 +666,21 @@ def _read_one_feed(url):
         return url, [], type(error).__name__
 
 
-def collect():
-    feed_urls = configured_feeds()
+# Smaller rapid fallback when direct Amazon credentials are not configured.
+# Never poll all 24 public feeds every five minutes.
+FAST_RSS_PUBLISHERS = (
+    "https://www.dealabs.com/rss",
+    "https://www.dealabs.com/rss/groupe/informatique",
+    "https://www.dealabs.com/rss/groupe/consoles-jeux-video",
+    "https://www.chollometro.com/rss",
+    "https://www.mydealz.de/rss/new",
+    "https://quantospendo.app/offerte/feed.xml",
+)
+
+
+def collect(fast_only=False):
+    feed_urls = (list(FAST_RSS_PUBLISHERS) if fast_only and not RSS_URL
+                 else configured_feeds())
     SCAN_STATS.clear()
     SCAN_STATS.update({"rss_total": len(feed_urls), "rss_ok": 0, "rss_unavailable": [], "pepper": 0})
     posts = {}
@@ -687,7 +700,8 @@ def collect():
                 unique = item["link"] or item["key"]
                 if unique and unique not in posts:
                     posts[unique] = item
-    if os.getenv("PEPPER_GRAPHQL_ENABLED", "false").lower() == "true" and not RSS_URL:
+    if (not fast_only and os.getenv("PEPPER_GRAPHQL_ENABLED", "false").lower() == "true"
+            and not RSS_URL):
         # Anonymous best-effort secondary channel. Failure must never break RSS.
         pepper_posts = pepper.fetch_public_threads()
         SCAN_STATS["pepper"] = len(pepper_posts)
@@ -935,11 +949,14 @@ def run():
         "DIRECT_AMAZON_ENABLED", "true").lower() == "true" else []
     direct_only = os.getenv("DIRECT_ONLY_RUN", "false").lower() == "true"
     try:
-        if direct_only:
+        if direct_only and amazon_direct.enabled():
             posts, available, requested = [], 0, 0
             SCAN_STATS.clear()
             SCAN_STATS.update({"rss_total": 0, "rss_ok": 0,
                                "rss_unavailable": [], "pepper": 0})
+        elif direct_only:
+            print("FAST FALLBACK: Creators credentials missing, sampling six fresh EU RSS streams.")
+            posts, available, requested = collect(fast_only=True)
         else:
             posts, available, requested = collect()
     except RuntimeError:
