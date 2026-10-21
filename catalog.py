@@ -107,7 +107,7 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
             d = _source_host(direct)
             if d not in ALLOWED_AMAZON:
                 direct = None
-        state = ("ready_for_alert" if candidate and direct else
+        state = ("ready_for_alert" if direct else
                  "editorial_review" if candidate or host in COMPARISON_DOMAINS else
                  "watchlist")
         records.append({
