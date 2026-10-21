@@ -27,8 +27,7 @@ PAGES = {
                   "https://www.cdiscount.com/search/10/lampe.html",
                   "https://www.cdiscount.com/search/10/aspirateur.html",
                   "https://www.cdiscount.com/search/10/bureau.html"),
-    "Joybuy": ("https://www.joybuy.fr/marketing/lightning-offers?renderStyle=bottom_flow",
-               "https://www.joybuy.fr/"),
+    "Joybuy": ("https://www.joybuy.fr/marketing/lightning-offers?renderStyle=bottom_flow",),
 }
 USER_AGENT = "DiamondHunter/3.0 (public-price-observation)"
 SALE = re.compile(r"(?:-|−)\s*(\d{2})\s*%|(\d{2})\s*%\s*(?:off|de réduction|réduction)", re.I)
@@ -370,7 +369,12 @@ def discover(state, env=None, now=None):
     last_checked = state.setdefault("retailer_direct_last_checked", {})
     for shop in ("Cdiscount", "Joybuy"):
         last = last_checked.get(shop)
-        if isinstance(last, (float, int)) and 0 <= now.timestamp() - last < min_interval:
+        # Explicit free on-demand release scans may refresh Joybuy once
+        # immediately, while the regular schedule stays courtesy-throttled.
+        force_joybuy = (shop == "Joybuy" and
+                        str(env.get("RETAIL_FORCE_JOYBUY_SCAN", "false")).lower() == "true")
+        if (not force_joybuy and isinstance(last, (float, int)) and
+                0 <= now.timestamp() - last < min_interval):
             continue
         last_checked[shop] = now.timestamp()
         page_list = PAGES[shop]
