@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from email.utils import format_datetime
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, quote
 from urllib.request import Request, urlopen
 
 import policy
@@ -193,7 +193,8 @@ def _retailer_product(url, markup, expected_shop, now, teaser=""):
 
 def _fetch_page(url, expected_shop):
     """Never follow redirects to other shops, auth pages or deal forums."""
-    req = Request(url, headers={"User-Agent": USER_AGENT,
+    encoded = quote(url, safe=":/?=&%-._~")
+    req = Request(encoded, headers={"User-Agent": USER_AGENT,
                                 "Accept": "text/html,application/xhtml+xml"})
     with urlopen(req, timeout=9) as res:
         final = res.geturl()
