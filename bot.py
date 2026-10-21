@@ -666,6 +666,8 @@ def _read_one_feed(url):
 
 def collect():
     feed_urls = configured_feeds()
+    SCAN_STATS.clear()
+    SCAN_STATS.update({"rss_total": len(feed_urls), "rss_ok": 0, "rss_unavailable": [], "pepper": 0})
     posts = {}
     ok_feeds = 0
     # Parallel I/O prevents one broken RSS host from blocking the whole
@@ -675,6 +677,7 @@ def collect():
         for url, items, error in results:
             if error:
                 print(f"FEED unavailable: {url}: {error}")
+                SCAN_STATS["rss_unavailable"].append(url)
                 continue
             ok_feeds += 1
             print(f"FEED OK: {url}: {len(items)} posts")
@@ -684,7 +687,9 @@ def collect():
                     posts[unique] = item
     if os.getenv("PEPPER_GRAPHQL_ENABLED", "false").lower() == "true" and not RSS_URL:
         # Anonymous best-effort secondary channel. Failure must never break RSS.
-        for item in pepper.fetch_public_threads():
+        pepper_posts = pepper.fetch_public_threads()
+        SCAN_STATS["pepper"] = len(pepper_posts)
+        for item in pepper_posts:
             key = item["link"]
             if key in posts:
                 existing = posts[key]
@@ -692,6 +697,7 @@ def collect():
                     existing["advertised_price_eur"] = item.get("advertised_price_eur")
             else:
                 posts[key] = item
+    SCAN_STATS["rss_ok"] = ok_feeds
     if not ok_feeds and not posts:
         raise RuntimeError("All available deal discovery sources failed.")
     return list(posts.values()), ok_feeds, len(feed_urls)
@@ -947,7 +953,7 @@ def run():
             meta["keepa_check_day"] = today_utc
             print(f"KEEPA: {count} fresh source-labelled ASIN observations; checkout price is unverified.")
         exported = catalog.export(CATALOG_PATH, CATALOG_EXPORT_DIR)
-        enhanced = catalog_ui.enhance(CATALOG_EXPORT_DIR, CATALOG_PATH)
+        enhanced = catalog_ui.enhance(CATALOG_EXPORT_DIR, CATALOG_PATH, source_health=SCAN_STATS)
         print(f"STOREFRONT: {enhanced['cards']} cards, {enhanced['keepa']} source-labelled Keepa quotes.")
         print(
             f"FINDINGS DATABASE: {saved_count} unique source publications; "
