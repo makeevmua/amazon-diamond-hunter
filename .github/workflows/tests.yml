@@ -29,6 +29,23 @@ jobs:
                   parser=retailer_direct.ProductLinks(url)
                   parser.feed(page)
                   print(f"RETAIL CONNECTIVITY: {shop}: HTML retrieved, {len(parser.links)} direct product links")
+                  if shop=="Cdiscount":
+                      import re
+                      print("CD DIAGNOSTIC: candidate f- strings", len(re.findall(r"f-[a-zA-Z0-9-]+\\.html",page)))
+                      print("CD DIAGNOSTIC: hrefs",len(re.findall(r"href=",page,re.I)))
+                      print("CD DIAGNOSTIC: HTML length",len(page))
+                      print("CD DIAGNOSTIC: normalized shop hrefs",len(re.findall(r"https?://(?:www\\.)?cdiscount\\.com/",page,re.I)))
+                  else:
+                      # Observe real product detail for data extraction, without price posting.
+                      if parser.links:
+                          detail, teaser=parser.links[0]
+                          try:
+                              html=retailer_direct._fetch_page(detail,shop)
+                              print("JOYBUY PDP: bytes",len(html),"JSON-LD", "application/ld+json" in html)
+                              rec=retailer_direct._retailer_product(detail,html,shop,__import__('datetime').datetime.now(__import__('datetime').timezone.utc),teaser)
+                              print("JOYBUY PDP: qualified offer", bool(rec))
+                          except Exception as err:
+                              print("JOYBUY PDP: unavailable",type(err).__name__)
               except Exception as error:
                   print(f"RETAIL CONNECTIVITY: {shop}: unavailable ({type(error).__name__})")
           PY
