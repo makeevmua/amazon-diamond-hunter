@@ -117,6 +117,7 @@ jobs:
           RETAIL_DIRECT_ENABLED: 'true'
           RETAIL_PRODUCT_CHECKS_PER_SHOP: '2'
           RETAIL_JOYBUY_PRODUCT_CHECKS_PER_SCAN: '6'
+          RETAIL_FORCE_JOYBUY_SCAN: ${{ github.event_name == 'push' && 'true' || 'false' }}
           AMAZON_CREATORS_CLIENT_ID: ${{ github.event_name != 'push' && secrets.AMAZON_CREATORS_CLIENT_ID || '' }}
           AMAZON_CREATORS_CLIENT_SECRET: ${{ github.event_name != 'push' && secrets.AMAZON_CREATORS_CLIENT_SECRET || '' }}
           AMAZON_PARTNER_TAG_FR: ${{ github.event_name != 'push' && secrets.AMAZON_PARTNER_TAG_FR || '' }}
