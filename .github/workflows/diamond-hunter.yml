@@ -23,6 +23,7 @@ on:
       - 'brightdata_verify.py'
       - 'brightdata_search.py'
       - 'retail_scope.py'
+      - 'retailer_direct.py'
       - 'brightdata_probe.py'
   schedule:
     - cron: "3,18,33,48 * * * *" # Full discovery every 15m
@@ -91,7 +92,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          MIN_DISCOUNT: '50'
+          MIN_DISCOUNT: '25'
           MAX_NOTIFICATIONS: '5'
           DRY_RUN: 'false'
           CATALOG_ENABLED: 'true'
@@ -104,6 +105,8 @@ jobs:
           BRIGHTDATA_PER_SCAN: '1'
           BRIGHTDATA_SEARCH_ENABLED: 'true'
           BRIGHTDATA_SEARCH_PER_DAY: '1'
+          RETAIL_DIRECT_ENABLED: 'true'
+          RETAIL_PRODUCT_CHECKS_PER_SHOP: '2'
           AMAZON_CREATORS_CLIENT_ID: ${{ secrets.AMAZON_CREATORS_CLIENT_ID }}
           AMAZON_CREATORS_CLIENT_SECRET: ${{ secrets.AMAZON_CREATORS_CLIENT_SECRET }}
           AMAZON_PARTNER_TAG_FR: ${{ secrets.AMAZON_PARTNER_TAG_FR }}
