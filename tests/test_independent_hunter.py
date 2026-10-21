@@ -12,6 +12,7 @@ import brightdata_verify
 import catalog
 import direct_pipeline
 import keepa_discovery
+import fast_hunter
 
 NOW = datetime(2026, 10, 21, 12, tzinfo=timezone.utc)
 
@@ -115,6 +116,19 @@ class BrightDataTests(unittest.TestCase):
         self.assertEqual(again,{})
         self.assertEqual(req.call_count,1)
         self.assertEqual(state["brightdata_usage"]["daily"],1)
+
+    def test_fast_worker_runs_with_keepa_key_even_without_amazon_partners(self):
+        record = keepa_discovery.normalize_deal(keepa_record(), "amazon.fr", 0, NOW)
+        sent = []
+        state = {}
+        with patch.object(fast_hunter.amazon_direct, "enabled", return_value=False), \
+             patch.object(fast_hunter.keepa_discovery, "discover", return_value=[record]), \
+             patch.object(fast_hunter.brightdata_verify, "verify", return_value={}):
+            first = fast_hunter.scan(state, lambda message, buttons, photo: sent.append(message))
+            second = fast_hunter.scan(state, lambda message, buttons, photo: sent.append(message))
+        self.assertEqual((first, second), (1, 0))
+        self.assertEqual(len(sent), 1)
+        self.assertIn("KEEPA", sent[0])
 
     def test_keepa_storefront_is_not_mislabeled(self):
         post = keepa_discovery.normalize_deal(
