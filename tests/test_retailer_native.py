@@ -305,6 +305,30 @@ class MerchantTests(unittest.TestCase):
         self.assertEqual(state["retailer_joybuy_item_cursor"],6)
         self.assertEqual(state["retailer_direct_health"]["Joybuy"]["offers"],6)
 
+    def test_joybuy_scans_flash_offers_not_unproductive_homepage(self):
+        self.assertEqual(len(retailer_direct.PAGES["Joybuy"]),1)
+        self.assertIn("/marketing/lightning-offers",retailer_direct.PAGES["Joybuy"][0])
+
+    def test_free_one_shot_can_recheck_joybuy_without_changing_regular_throttle(self):
+        listing='<a href="'+JB+'">HyperX Cloud Stinger 2 -44% €27.99 RRP €49.99</a>'
+        def fetch(url,shop):
+            if shop=="Joybuy":
+                return html_product("HyperX Cloud Stinger 2 Casque",27.99,JB) if url==JB else listing
+            return "<html>Cdiscount has no products</html>"
+        state={"retailer_direct_last_checked":{"Joybuy":NOW.timestamp()}}
+        with patch.dict(os.environ, {
+            "BRIGHTDATA_API_TOKEN":"",
+            "BRIGHTDATA_UNLOCKER_ZONE":"",
+        }),patch.object(retailer_direct,"_fetch_page",side_effect=fetch) as calls:
+            rows=retailer_direct.discover(state,env={
+                "RETAIL_DIRECT_ENABLED":"true",
+                "RETAIL_FORCE_JOYBUY_SCAN":"true",
+                "RETAIL_PRODUCT_CHECKS_PER_SHOP":"1",
+            },now=NOW+timedelta(seconds=30))
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]["direct_source"],"Joybuy Direct")
+        self.assertEqual(len([x for x in calls.call_args_list if x.args[1]=="Joybuy"]),2)
+
     def test_bounded_direct_scans_and_error_handling(self):
         cdoc=('<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>')
         jdoc=('<a href="'+JB+'">44% off HyperX Cloud €27.99 RRP €49.99</a>')
