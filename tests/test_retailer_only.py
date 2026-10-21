@@ -90,7 +90,7 @@ class RetailerOnlyTests(unittest.TestCase):
             raw={
                 "source_url":"https://www.dealabs.com/bons-plans/bonobo",
                 "source":"www.dealabs.com",
-                "title":"Surchemise Boutonnée Homme Bonobo",
+                "title":"Chaise Bauhaus design",
                 "category":"collectibles", "claimed_discount":60,
                 "advertised_price_eur":23.99,
                 "amazon_product_url":None, "price_scope":"unverified_public_offer",
@@ -119,7 +119,7 @@ class RetailerOnlyTests(unittest.TestCase):
                 html=(target/"index.html").read_text("utf8")
                 self.assertIn("Открыть на Amazon",html)
                 self.assertNotIn("Объявление ↗",html)
-                self.assertNotIn("Bonobo",html)
+                self.assertNotIn("Chaise Bauhaus",html)
                 offers=json.loads((target/"finds.json").read_text("utf8"))["offers"]
                 self.assertEqual([x["title"] for x in offers],["Samsung SSD 990 PRO NVMe"])
 
