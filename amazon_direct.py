@@ -11,6 +11,7 @@ import json
 import math
 import os
 import re
+from urllib.parse import urlsplit
 import statistics
 import time
 from datetime import datetime, timezone
@@ -141,10 +142,25 @@ def normalize_item(item, market, observed_at):
         return None
     # Prefer Buy Box if identified. If not, choose cheapest *listed* new offer.
     _, current, selected = min(eligible, key=lambda x: (x[0], x[1]))
-    base = _positive_euro(((selected.get("price") or {}).get("savingBasis") or {}).get("money"))
-    claimed = round(100 * (base - current) / base) if base and base > current else 0
+    price_meta = selected.get("price") or {}
+    base = _positive_euro((price_meta.get("savingBasis") or {}).get("money"))
+    savings_pct = (price_meta.get("savings") or {}).get("percentage")
+    claimed = int(savings_pct) if type(savings_pct) is int and 0 < savings_pct < 100 else 0
+    deal = selected.get("dealDetails") or {}
+    if claimed == 0 and base and base > current:
+        claimed = round(100 * (base - current) / base)
     img = (((item.get("images") or {}).get("primary") or {}).get("medium") or {}).get("url") or ""
     link = f"https://{market}/dp/{asin.upper()}"
+    official_link = item.get("detailPageURL")
+    affiliate_url = link
+    if isinstance(official_link, str):
+        try:
+            parts = urlsplit(official_link)
+            if (parts.scheme == "https" and parts.hostname in (market, "www." + market)
+                    and parts.path == "/dp/" + asin.upper()):
+                affiliate_url = official_link
+        except ValueError:
+            pass
     return {
         "title": title, "description": "", "content": "", "link": link, "key": link,
         "pubDate": observed_at, "image": img,
@@ -153,6 +169,8 @@ def normalize_item(item, market, observed_at):
         "direct_list_price_eur": base, "direct_claimed_percent": max(0, min(99, claimed)),
         "direct_offer_type": selected.get("type") or "REGULAR",
         "direct_merchant": ((selected.get("merchantInfo") or {}).get("name") or ""),
+        "direct_affiliate_url": affiliate_url,
+        "direct_deal_badge": str(deal.get("badge") or "")[:70],
     }
 
 
@@ -167,7 +185,7 @@ def observe_price(history, item, now_epoch):
     previous = history.setdefault(key, [])
     good = [r for r in previous if isinstance(r, list) and len(r) == 2
             and type(r[0]) in (int, float) and type(r[1]) in (int, float)
-            and 0 < now_epoch - r[0] <= 2 * 86400 and r[1] > 0]
+            and 0 < now_epoch - r[0] <= 23 * 3600 and r[1] > 0]
     old = [r for r in good if now_epoch - r[0] >= 15 * 60]
     decline = None
     if len(good) >= 2 and old and max(r[0] for r in good) - min(r[0] for r in good) >= 5 * 60:
@@ -194,7 +212,10 @@ def discover(state, env=None, now=None, sleep_between=1.1):
     now = now or datetime.now(timezone.utc)
     when = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
     # Limit request budget to avoid unexpectedly exhausting an affiliate quota.
-    limit = max(1, min(int(env.get("DIRECT_MAX_QUERIES", "8")), 16))
+    try:
+        limit = max(1, min(int(env.get("DIRECT_MAX_QUERIES", "8")), 16))
+    except (ValueError, TypeError):
+        limit = 8
     cursor = int(state.get("creators_cursor", 0))
     market_queries = [(market, q) for market in MARKETS
                       if env.get("AMAZON_PARTNER_TAG_" + market[-2:].upper())
@@ -235,7 +256,14 @@ def discover(state, env=None, now=None, sleep_between=1.1):
     stamp = now.timestamp()
     for rec in found.values():
         rec["direct_observed_drop"] = observe_price(history, rec, stamp)
-    if len(history) > 5000:
-        state["direct_price_history"] = dict(list(history.items())[-4000:])
+    # Amazon Creators offer content is time-limited; prune persisted prices.
+    for key in list(history):
+        history[key] = [r for r in history[key] if
+                        isinstance(r, list) and len(r) == 2 and
+                        0 <= stamp - r[0] <= 23 * 3600]
+        if not history[key]:
+            del history[key]
+    if len(history) > 4000:
+        state["direct_price_history"] = dict(list(history.items())[-3000:])
     print(f"AMAZON DIRECT: {len(found)} first-party new product quotes from {successful}/{attempted} queries")
     return list(found.values())
