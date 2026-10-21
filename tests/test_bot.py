@@ -212,14 +212,19 @@ class DiamondTests(unittest.TestCase):
             ("Chaise en forme de burger -60%", "meuble original"),
             ("Tapis scandinave -55%", "nordique"),
             ("Vase céramique moderniste -60%", "décoration"),
-            ("Assiettes design -55%", "vaisselle"),
-            ("Coussins modernes -55%", "textile"),
+
             ("Bougies sculpturales -55%", "déco"),
         ]
         for title, desc in cases:
             with self.subTest(title=title):
                 self.assertIn("design & interior", bot.category_matches(title + " " + desc))
                 self.assertTrue(bot.relevant(title, desc))
+
+    def test_generic_interior_words_do_not_substitute_for_agreed_style(self):
+        self.assertFalse(bot.relevant("Assiettes design -55%", "vaisselle"))
+        self.assertFalse(bot.relevant("Coussins modernes -55%", "textile"))
+        self.assertFalse(bot.relevant("Panier linge bambou -65%", "rangement"))
+        self.assertTrue(bot.relevant("Chaise en forme de burger -60%", "meuble original"))
 
     def test_interior_style_boost_and_rustic_deprioritization(self):
         styled = post("Fauteuil Bauhaus -60%",
@@ -230,7 +235,8 @@ class DiamondTests(unittest.TestCase):
                       "https://amazon.fr/dp/B0B9C4DKKH")
         with patch.object(bot, "fetch", side_effect=AssertionError("unexpected fetch")):
             found = bot.candidates([rustic, styled])
-        self.assertEqual(len(found), 2)
+        # Generic rustic furniture has no user-approved aesthetic: reject it.
+        self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["title"], styled["title"])
 
     def test_four_added_category_filters(self):

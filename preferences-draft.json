@@ -52,13 +52,16 @@
     "fashion",
     "tabletop_board_games",
     "offline_local_only_deals",
-    "anything_without_direct_allowed_store_product_link"
+    "anything_without_direct_allowed_store_product_link",
+    "underwear_boxers_briefs",
+    "hair_care_products_and_styling_tools",
+    "generic_interior_without_explicit_agreed_aesthetic"
   ],
   "deal_confidence": [
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Strict retailer-only production: direct Amazon/Cdiscount/Joybuy products, no Dealabs/other forum notices, no clothing or tabletop games. Amazon direct discovery requires provider access; Cdiscount/Joybuy direct discovery not yet live.",
+  "note": "Strict retailer-only: Amazon/Cdiscount/Joybuy, 25% minimum. No clothing including underwear, no hair products or styling tools, no board games, no generic interior items without explicit selected design style, no reposts.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -251,9 +254,10 @@
       "baroque",
       "generic mass-market home goods without recognizable design"
     ],
-    "lower_priority_not_hard_exclusion": true,
+    "lower_priority_not_hard_exclusion": false,
     "condition": "new only; vintage-look designs welcomed but physically used or refurbished items excluded",
-    "note": "RSS keyword/style matching only: no computer vision or verified aesthetic classification, no guarantee a listed item looks like this."
+    "note": "Title-based conservative style classification, not image analysis; absent an explicit approved style cue, generic furniture/decor is excluded. Broad 'modern' or 'design' alone does not qualify.",
+    "selection_rule": "Strict: accept furniture/decor only if the item title explicitly mentions Bauhaus, Nordic, Scandinavian, Memphis, modernist, mid-century, space-age, sculptural, geometric, playful retro or a recognizable design brand. No generic bamboo hampers, ordinary furniture, or plain decor solely because it is a home product. Product image is not reliably assessed."
   },
   "unexpected_diamond": {
     "enabled": true,

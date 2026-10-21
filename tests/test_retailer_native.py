@@ -37,7 +37,7 @@ class MerchantTests(unittest.TestCase):
         self.assertEqual(bot.MIN_DISCOUNT,25)
         names=["LEGO Star Wars", "PC gamer RTX 5080", "PS5 DualSense",
                "HyperX Cloud III Wireless Casque", "Dyson aspirateur robot",
-               "Chaise Bauhaus design", "Vase céramique jaune"]
+               "Chaise Bauhaus design", "Vase sculptural céramique jaune"]
         for title in names:
             with self.subTest(title=title):
                 item={"title":title,"direct_source":"Bright Data Amazon Search",

@@ -31,6 +31,9 @@ class RetailerOnlyTests(unittest.TestCase):
             "[Vente privée] Jeu de société - 1902 : Méliès",
             "Board Game Catan", "Gioco da tavolo", "Gesellschaftsspiel",
             "Samsung Galaxy S26 Ultra", "Xbox Series X",
+            "CALVIN KLEIN Icon Boxers coton stretch",
+            "FINO Masque capillaire Premium Touch 230 g",
+            "JOYFURNOS Grand Panier à Linge en Bambou",
         ]
         for title in bad:
             with self.subTest(title=title):

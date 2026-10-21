@@ -1022,7 +1022,7 @@ def run():
                  post.get("link") not in {p["link"] for p in direct_offers}]]
     before_scope_filter = len(posts)
     posts = [item for item in posts if policy.is_allowed(item.get("title"), item.get("description"))]
-    print(f"PRODUCT POLICY: {before_scope_filter - len(posts)} unwanted Xbox/Samsung listings excluded.")
+    print(f"PRODUCT POLICY: {before_scope_filter - len(posts)} excluded products (clothing, hair care, generic interior, Xbox, non-SSD Samsung, etc.).")
     # Keep exact retailer identifiers discovered from the public sources.
     # Subsequent Creators GetItems queries see future price changes at Amazon
     # directly, without waiting for a forum user to announce that change.
