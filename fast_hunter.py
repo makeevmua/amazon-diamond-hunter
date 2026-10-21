@@ -20,6 +20,7 @@ import keepa_discovery
 import brightdata_verify
 import brightdata_search
 import retailer_direct
+import retail_scope
 
 
 def _read_state(path):
@@ -44,7 +45,8 @@ def scan(state, deliver):
     amazon_direct.add_watchlist(state, [doc["link"] for doc in docs])
     docs.extend(keepa_discovery.discover(state, requests_per_scan=1))
     docs.extend(brightdata_search.discover(state))
-    docs.extend(retailer_direct.discover(state))
+    if retail_scope.enabled():
+        docs.extend(retailer_direct.discover(state))
     recent = state.setdefault("worker_alert_state", {})
     sent = 0
     try:
