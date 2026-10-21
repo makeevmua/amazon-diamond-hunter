@@ -326,7 +326,7 @@
       "United States deal feeds",
       "pan-European feeds containing unwanted countries"
     ],
-    "note": "Added themed Dealabs RSS feeds for maison-jardin, jeux-jouets, hygiene-sante-cosmetiques, accessoires-gadgets, animaux and culture-divertissement. Availability is checked per run; no paid private API."
+    "note": "Added themed Dealabs RSS feeds for jardin-bricolage, jeux-jouets, sante-et-cosmetiques, accessoires-gadgets, animaux and culture-divertissement. Availability is checked per run; no paid private API."
   },
   "findings_database": {
     "enabled": true,
