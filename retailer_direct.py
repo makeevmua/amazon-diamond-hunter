@@ -313,6 +313,36 @@ def _fetch_page(url, expected_shop):
     return raw.decode("utf-8", errors="replace")
 
 
+
+def _bounded_cdiscount_unlock(url, state, env, now):
+    """Spend at most the configured daily number of Cdiscount unlocker calls.
+
+    Listing and PDP fallback share the SAME persistent UTC-day quota.
+    The budget is reserved before the provider call and never reset on errors.
+    """
+    token = os.getenv("BRIGHTDATA_API_TOKEN", "").strip()
+    zone = os.getenv("BRIGHTDATA_UNLOCKER_ZONE", "").strip()
+    if not token or not re.fullmatch(r"[A-Za-z0-9_-]{2,80}", zone):
+        return None, False
+    usage = state.setdefault("cdiscount_unlocker_usage", {})
+    day = now.date().isoformat()
+    if usage.get("day") != day:
+        usage.update({"day": day, "count": 0})
+    try:
+        limit = max(0, min(20, int(env.get("BRIGHTDATA_CDISCOUNT_MAX_DAILY", "8"))))
+    except (TypeError, ValueError):
+        limit = 8
+    if usage["count"] >= limit:
+        print("RETAIL DIRECT: Cdiscount unlocker daily budget exhausted")
+        return None, True
+    usage["count"] += 1
+    try:
+        return _fetch_cdiscount_with_provider(url), False
+    except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
+        print(f"RETAIL DIRECT: Cdiscount provider unavailable ({type(exc).__name__})")
+        return None, False
+
+
 def discover(state, env=None, now=None):
     env = os.environ if env is None else env
     if str(env.get("RETAIL_DIRECT_ENABLED", "false")).lower() == "false":
@@ -368,31 +398,9 @@ def discover(state, env=None, now=None):
                 match = SALE.search(teaser)
                 return bool(match and max(int(x) for x in match.groups() if x) >= 25)
         unlocker_exhausted = False
-        if (not links and shop == "Cdiscount" and
-                os.getenv("BRIGHTDATA_API_TOKEN") and
-                os.getenv("BRIGHTDATA_UNLOCKER_ZONE")):
-            # Protect the shared Bright Data free-credit pool.
-            usage = state.setdefault("cdiscount_unlocker_usage", {})
-            day = now.date().isoformat()
-            if usage.get("day") != day:
-                usage.update({"day": day, "count": 0})
-            try:
-                daily_limit = max(0, min(20,
-                    int(env.get("BRIGHTDATA_CDISCOUNT_MAX_DAILY", "8"))))
-            except (ValueError, TypeError):
-                daily_limit = 8
-            if usage["count"] >= daily_limit:
-                print("RETAIL DIRECT: Cdiscount unlocker daily budget exhausted")
-                unlocker_exhausted = True
-                unlocked = None
-            else:
-                # Reserve the attempt before any potential billable request.
-                usage["count"] += 1
-                try:
-                    unlocked = _fetch_cdiscount_with_provider(url)
-                except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
-                    print(f"RETAIL DIRECT: Cdiscount provider unavailable ({type(exc).__name__})")
-                    unlocked = None
+        if not links and shop == "Cdiscount":
+            unlocked, unlocker_exhausted = _bounded_cdiscount_unlock(
+                url, state, env, now)
             try:
                 if unlocked:
                     parser = ProductLinks(url)
@@ -405,8 +413,9 @@ def discover(state, env=None, now=None):
         # Never publish a blocked page or fabricate product records.
         if not links:
             reason = ("needs_web_unlocker" if shop == "Cdiscount" and
-                      not (os.getenv("BRIGHTDATA_API_TOKEN") and
-                           os.getenv("BRIGHTDATA_UNLOCKER_ZONE"))
+                      not (os.getenv("BRIGHTDATA_API_TOKEN", "").strip() and
+                           re.fullmatch(r"[A-Za-z0-9_-]{2,80}",
+                                        os.getenv("BRIGHTDATA_UNLOCKER_ZONE", "").strip()))
                       else "unlocker_budget_exhausted" if unlocker_exhausted
                       else "unavailable" if listing_blocked
                       else "no_product_links")
@@ -435,6 +444,15 @@ def discover(state, env=None, now=None):
                 # It remains clearly marked UNVERIFIED, never a PDP quote.
                 item = (_listing_fallback(dest, text, shop, now)
                         if shop == "Joybuy" else None)
+                if shop == "Cdiscount":
+                    # Cdiscount's product page can also be blocked, even when
+                    # its category listing was unlocked successfully.
+                    # Reserve another attempt from the SAME daily quota.
+                    details, _ = _bounded_cdiscount_unlock(
+                        dest, state, env, now)
+                    if details:
+                        item = _retailer_product(
+                            dest, details, shop, now, teaser=text)
             if item:
                 out[item["link"]] = item
         state[index_key] = start + max(1, checked)
