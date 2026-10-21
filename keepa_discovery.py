@@ -144,7 +144,19 @@ def discover(state, env=None, now=None, requests_per_scan=None):
     sequence = [(m, p) for p in PRICE_TYPES for m in DOMAINS]
     cursor = int(state.get("keepa_deals_cursor", 0)) % len(sequence)
     discovered = {}
+    used = state.setdefault("keepa_deals_usage", {})
+    day = now.date().isoformat()
+    if used.get("day") != day:
+        used.clear()
+        used.update(day=day, calls=0)
+    try:
+        daily_limit = max(0, min(200, int(env.get("KEEPA_MAX_DEAL_QUERIES_PER_DAY", "64"))))
+    except (ValueError, TypeError):
+        daily_limit = 64
+    limit = min(limit, max(0, daily_limit - used["calls"]))
     for n in range(limit):
+        used["calls"] += 1 # A failed HTTP request may still consume tokens.
+
         market, price_type = sequence[(cursor + n) % len(sequence)]
         try:
             rows = request_deals(key, deals_query(market, price_type))
