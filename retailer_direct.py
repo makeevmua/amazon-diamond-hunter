@@ -315,7 +315,7 @@ def _fetch_page(url, expected_shop):
 
 def discover(state, env=None, now=None):
     env = os.environ if env is None else env
-    if str(env.get("RETAIL_DIRECT_ENABLED", "true")).lower() == "false":
+    if str(env.get("RETAIL_DIRECT_ENABLED", "false")).lower() == "false":
         return []
     now = now or datetime.now(timezone.utc)
     try:
