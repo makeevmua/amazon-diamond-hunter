@@ -1,6 +1,7 @@
 """Offline regression tests for release-ready persistence, UI, and price labels."""
 from datetime import datetime, timezone, timedelta
 import json
+import subprocess
 import sqlite3
 import sys
 import tempfile
@@ -97,6 +98,20 @@ class ReleaseTests(unittest.TestCase):
             self.assertIn("не история Amazon", html)
             self.assertEqual(len(payload["offers"][0]["public_price_changes"]), 2)
             self.assertEqual(payload["offers"][0]["keepa"]["price_type"], "amazon")
+
+    def test_durable_store_shell_and_live_workflow_configuration(self):
+        repo = Path(__file__).resolve().parents[1]
+        shell = repo / "state-store.sh"
+        parsed = subprocess.run(["bash", "-n", str(shell)],
+                                check=False, capture_output=True, text=True)
+        self.assertEqual(parsed.returncode, 0, parsed.stderr)
+        script = shell.read_text("utf8")
+        self.assertIn('add -f state/catalog.sqlite state/seen.json', script)
+        workflow = (repo / ".github/workflows/diamond-hunter.yml").read_text("utf8")
+        self.assertIn("bash state-store.sh restore", workflow)
+        self.assertIn("bash state-store.sh backup", workflow)
+        self.assertIn("KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}", workflow)
+        self.assertIn("PEPPER_GRAPHQL_ENABLED: 'true'", workflow)
 
     def test_keepa_history_missing_never_implies_discount(self):
         now = datetime(2026, 10, 21, 10, tzinfo=timezone.utc)
