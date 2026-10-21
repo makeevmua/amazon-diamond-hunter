@@ -32,6 +32,7 @@ import keepa_discovery
 import brightdata_verify
 import brightdata_search
 import retail_scope
+import retailer_direct
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -975,11 +976,13 @@ def run():
                      if not DRY_RUN and
                      (not direct_only or bool(meta.get("brightdata_search_pending")))
                      else [])
+    retailer_offers = (retailer_direct.discover(meta)
+                       if not DRY_RUN and not direct_only else [])
     # Prefer the first-party official API over Keepa, and Keepa historic
     # observations over independently scraped Amazon search results.
     direct_offers = []
     direct_urls = set()
-    for offer in [*first_party, *keepa_offers, *search_offers]:
+    for offer in [*first_party, *keepa_offers, *search_offers, *retailer_offers]:
         if offer["link"] not in direct_urls:
             direct_offers.append(offer)
             direct_urls.add(offer["link"])
@@ -1006,6 +1009,9 @@ def run():
     SCAN_STATS["amazon_direct"] = len(first_party)
     SCAN_STATS["keepa_deals"] = len(keepa_offers)
     SCAN_STATS["brightdata_search"] = len(search_offers)
+    SCAN_STATS["cdiscount_direct"] = sum(1 for p in retailer_offers if p["direct_source"] == "Cdiscount Direct")
+    SCAN_STATS["joybuy_direct"] = sum(1 for p in retailer_offers if p["direct_source"] == "Joybuy Direct")
+    SCAN_STATS["retailer_health"] = meta.get("retailer_direct_health", {})
     # Site/Telegram products in retailer-only mode MUST originate directly
     # from authorized retailer-price providers, never forum articles.
     if retail_scope.enabled():
@@ -1046,8 +1052,11 @@ def run():
               {p["link"] for p in first_party} | {p["link"] for p in keepa_offers} and
               (deal := direct_pipeline.to_candidate(item, category_matches,
                   INTERIOR_DISCOUNT, MIN_DISCOUNT))]
+    retailer_native = [deal for item in retailer_offers if
+              (deal := direct_pipeline.to_candidate(item, category_matches,
+                  INTERIOR_DISCOUNT, MIN_DISCOUNT))]
     found = direct_pipeline.merge_candidates(
-        community, [*native, *keepa_native, *search_native])
+        community, [*native, *keepa_native, *search_native, *retailer_native])
     if keepa_native and not DRY_RUN:
         confirmations = brightdata_verify.verify(keepa_native[:8], meta)
         SCAN_STATS["brightdata_verified"] = len(confirmations)
