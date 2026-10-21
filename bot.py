@@ -171,8 +171,8 @@ PERSONAL_CARE_RE = re.compile(
     r"beauty device|personal care)\b", re.I,
 )
 
-MIN_DISCOUNT = int(os.getenv("MIN_DISCOUNT", str(PREF.get("min_discount_percent", 50))))
-INTERIOR_DISCOUNT = int(PREF.get("interior_design_profile", {}).get("min_claimed_discount_percent", 25))
+MIN_DISCOUNT = max(25, int(os.getenv("MIN_DISCOUNT", str(PREF.get("min_discount_percent", 25)))))
+INTERIOR_DISCOUNT = MIN_DISCOUNT
 SURPRISE_DISCOUNT = int(PREF.get("unexpected_diamond", {}).get("min_claimed_discount_percent", 80))
 SOURCE_ALERT_SETTINGS = PREF.get("notifications", {}).get("source_only_promising_alerts", {})
 SOURCE_ALERTS_ENABLED = bool(SOURCE_ALERT_SETTINGS.get("enabled", False))
