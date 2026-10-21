@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
-COPY bot.py amazon_direct.py direct_pipeline.py fast_hunter.py keepa_discovery.py brightdata_verify.py brightdata_search.py catalog.py catalog_ui.py alerts.py signals.py media.py policy.py pepper.py observations.py pricechecks.py preferences-draft.json ./
+COPY bot.py amazon_direct.py direct_pipeline.py fast_hunter.py keepa_discovery.py brightdata_verify.py brightdata_search.py catalog.py catalog_ui.py alerts.py signals.py media.py policy.py retail_scope.py pepper.py observations.py pricechecks.py preferences-draft.json ./
 RUN useradd -m -u 10001 hunter && mkdir -p /data && chown hunter:hunter /data
 USER hunter
 ENV FAST_HUNTER_STATE_PATH=/data/fast-hunter-state.json
