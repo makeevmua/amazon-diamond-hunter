@@ -4,6 +4,7 @@ These prices are externally advertised RSS headline values, never verified
 live Amazon prices.
 """
 from urllib.parse import urlsplit
+import retail_scope
 
 
 MIN_PRICE_DROP_EUR = 5.0
@@ -46,9 +47,10 @@ def deal_buttons(amazon_url=None, source_url=None):
     Do not generate an Amazon product link when none is known.
     """
     buttons = []
-    if amazon_url and _allowed_amazon_url(amazon_url):
-        buttons.append({"text": "Открыть на Amazon", "url": amazon_url})
-    if source_url and _allowed_source_url(source_url):
+    merchant = retail_scope.shop(amazon_url)
+    if merchant:
+        buttons.append({"text": "Открыть на " + merchant, "url": amazon_url})
+    if not retail_scope.enabled() and source_url and _allowed_source_url(source_url):
         buttons.append({
             "text": "Исходное предложение" if amazon_url else "Проверить находку",
             "url": source_url,
