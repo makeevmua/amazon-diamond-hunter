@@ -55,24 +55,26 @@ class ProductLinks(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         if tag.lower() == "a":
-            url = dict(attrs).get("href", "")
-            dest = urljoin(self.base, url)
-            if retail_scope.shop(dest) in ("Cdiscount", "Joybuy"):
-                self.active = {"url": dest, "depth": 1, "text": []}
-            elif self.active:
-                self.active["depth"] += 1
-        elif self.active:
-            self.active["depth"] += 1
+            if self.active:
+                self._finish()
+            raw = dict(attrs).get("href") or ""
+            dest = urljoin(self.base, raw)
+            self.active = {"url": dest, "text": []} if retail_scope.shop(dest) else None
+        elif self.active and tag.lower() == "img":
+            attrs = dict(attrs)
+            alt = attrs.get("alt")
+            if alt:
+                self.active["text"].append(alt)
 
     def handle_endtag(self, tag):
-        if not self.active:
-            return
-        self.active["depth"] -= 1
-        if self.active["depth"] <= 0:
-            text = re.sub(r"\s+", " ", " ".join(self.active["text"])).strip()
-            if text:
-                self.links.append((self.active["url"], text[:700]))
-            self.active = None
+        if tag.lower() == "a" and self.active:
+            self._finish()
+
+    def _finish(self):
+        text = re.sub(r"\\s+", " ", " ".join(self.active["text"])).strip()
+        if text:
+            self.links.append((self.active["url"], text[:700]))
+        self.active = None
 
     def handle_data(self, data):
         if self.active:
@@ -155,7 +157,7 @@ def _retailer_product(url, markup, expected_shop, now, teaser=""):
         return None
     # Only a same-product explicit crossed/reference amount from listing
     # qualifies. It is a CLAIM, not verified pre-sale pricing.
-    nums = [_float(x) for x in EURO.findall(teaser)]
+    nums = [_float((whole.replace(" ", "") + "." + cents) if cents else whole) for whole, cents in EURO.findall(teaser)]
     reference = max((n for n in nums if n and n > current * 1.25), default=None)
     hinted = SALE.search(teaser)
     pct_claim = max([int(x) for x in hinted.groups() if x] or [0]) if hinted else 0
