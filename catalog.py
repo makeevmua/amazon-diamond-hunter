@@ -10,6 +10,7 @@ import re
 import sqlite3
 import media
 import policy
+import retail_scope
 import observations
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -50,6 +51,7 @@ SOURCE_DOMAINS = {
     "quantospendo.app", "www.quantospendo.app",
     "lesnumeriques.com", "www.lesnumeriques.com",
     "brickset.com", "www.brickset.com", "mydealz.de", "www.mydealz.de",
+    "cdiscount.com", "www.cdiscount.com", "joybuy.fr", "www.joybuy.fr", "m.joybuy.fr",
     "amazon.fr", "amazon.de", "amazon.es", "amazon.it",
 }
 ALLOWED_AMAZON = {"amazon.fr", "amazon.de", "amazon.es", "amazon.it"}
@@ -76,12 +78,16 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
     records = []
     for post in posts:
         source = str(post.get("link", ""))[:1400]
+        if retail_scope.enabled() and not retail_scope.direct_post(post):
+            continue
         host = _source_host(source)
         if host not in SOURCE_DOMAINS or not fresh_fn(post.get("pubDate")):
             continue
         from_amazon = post.get("direct_source") == "Amazon Creators API"
         from_keepa = post.get("direct_source") == "Keepa Deals"
         from_search = post.get("direct_source") == "Bright Data Amazon Search"
+        from_cdiscount = post.get("direct_source") == "Cdiscount Direct"
+        from_joybuy = post.get("direct_source") == "Joybuy Direct"
         if host in ALLOWED_AMAZON and not (from_amazon or from_keepa or from_search):
             continue
         title = _clean(post.get("title", ""))[:300]
@@ -115,14 +121,16 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
         price_scope = ("amazon_creators_featured_new" if from_amazon else
                        "keepa_observed_new" if from_keepa else
                        "brightdata_search_listing" if from_search else
+                       "cdiscount_direct_observed" if from_cdiscount else
+                       "joybuy_direct_observed" if from_joybuy else
                        "mixed_merchants_unverified" if host in COMPARISON_DOMAINS
                        else "unverified_public_offer")
-        if from_amazon or from_keepa or from_search:
+        if from_amazon or from_keepa or from_search or from_cdiscount or from_joybuy:
             price = post["direct_current_eur"]
             # Official Amazon API savingBasis is a list/reference price.
             # Not independently proved savings, stock or FR checkout value.
             discount = int(post.get("keepa_drop90_percent") or 0) if from_keepa else int(post.get("direct_claimed_percent") or 0)
-        direct = source if (from_amazon or from_keepa or from_search) else (candidate.get("amazon") if candidate else None)
+        direct = source if (from_amazon or from_keepa or from_search or from_cdiscount or from_joybuy) else (candidate.get("amazon") if candidate else None)
         # A direct link in an editorial PRICE COMPARISON does NOT imply that
         # its cheapest headline offer was on Amazon.
         if not direct and host not in COMPARISON_DOMAINS:
@@ -130,7 +138,7 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
             direct = amazon_link_fn(combined) if "amazon." in combined.lower() else None
         if direct:
             d = _source_host(direct)
-            if d not in ALLOWED_AMAZON:
+            if d not in ALLOWED_AMAZON and not retail_scope.shop(direct):
                 direct = None
         state = ("ready_for_alert" if direct else
                  "editorial_review" if candidate or host in COMPARISON_DOMAINS else
@@ -181,9 +189,13 @@ def save_records(rows, db_path="catalog.sqlite", now=None):
             """, tuple(row.get(k) for k in EXPORT_FIELDS[:-3]) + (when, when))
         # Remove previously indexed Xbox deals and Samsung non-SSD products
         # as well: filtering only new RSS would leave stale site cards visible.
-        stale_scope = [url for url, title in db.execute(
-            'SELECT source_url,title FROM offers'
-        ).fetchall() if not policy.is_allowed(title)]
+        stale_scope = [url for url, title, src, scope, dest in db.execute(
+            'SELECT source_url,title,source,price_scope,amazon_product_url FROM offers'
+        ).fetchall() if (not policy.is_allowed(title) or
+            (retail_scope.enabled() and not retail_scope.indexed_product({
+                "source_url": url, "source": src, "price_scope": scope,
+                "amazon_product_url": dest
+            })))]
         db.executemany('DELETE FROM offers WHERE source_url=?',
                        [(url,) for url in stale_scope])
         # Amazon Creators advertising prices have very short cache TTL.
@@ -195,6 +207,8 @@ def save_records(rows, db_path="catalog.sqlite", now=None):
         db.execute("DELETE FROM offers WHERE price_scope='keepa_observed_new' AND last_seen < ?",
                    (keepa_cutoff,))
         db.execute("DELETE FROM offers WHERE price_scope='brightdata_search_listing' AND last_seen < ?",
+                   (keepa_cutoff,))
+        db.execute("DELETE FROM offers WHERE price_scope IN ('cdiscount_direct_observed','joybuy_direct_observed') AND last_seen < ?",
                    (keepa_cutoff,))
         # Bound storage by date and count. Fresh publication sightings are not
         # proof of continued stock or the current price.
@@ -217,7 +231,9 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
         observations.ensure(db)
         rows = [dict(row) for row in db.execute(
             "SELECT * FROM offers ORDER BY last_seen DESC LIMIT 1500")]
-        total = db.execute("SELECT count(*) FROM offers").fetchone()[0]
+        if retail_scope.enabled():
+            rows = [r for r in rows if retail_scope.indexed_product(r) and policy.is_allowed(r["title"])]
+        total = len(rows) if retail_scope.enabled() else db.execute("SELECT count(*) FROM offers").fetchone()[0]
         for row in rows:
             observations.enrich(row, db)
     latest_export = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -249,6 +265,8 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
                  if row["price_scope"] == "keepa_observed_new" else
                  "Bright Data Amazon Search: цена поисковой выдачи, без проверки корзины; скидка от исходной цены"
                  if row["price_scope"] == "brightdata_search_listing" else
+                 "Cdiscount/Joybuy: цена из данных магазина; наличие и доставка требуют проверки"
+                 if row["price_scope"] in ("cdiscount_direct_observed", "joybuy_direct_observed") else
                  "Цена из сравнения магазинов (не обязательно Amazon)"
                  if row["price_scope"] == "mixed_merchants_unverified"
                  else "Цена из объявления — не проверена на Amazon")
@@ -259,7 +277,11 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
         state = html.escape(row["state"], quote=True)
         # Even when an Amazon ASIN is known, the headline price is NOT
         # verified on Amazon. The button always says "check", not "buy".
-        if target:
+        if target and retail_scope.enabled():
+            merchant = retail_scope.shop(row["amazon_product_url"]) or "магазин"
+            action = (f'<a class="action buy" href="{target}" target="_blank" '
+                      'rel="noopener noreferrer">Открыть на ' + html.escape(merchant) + ' ↗</a>')
+        elif target:
             action = (f'<a class="action buy" href="{target}" target="_blank" '
                       'rel="noopener noreferrer">Проверить на Amazon ↗</a>'
                       f'<a class="action secondary" href="{source}" target="_blank" '
