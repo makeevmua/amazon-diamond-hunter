@@ -42,6 +42,12 @@ jobs:
                           try:
                               print("JOYBUY EXAMPLE URL",detail[:180])
                               print("JOYBUY TEASER",teaser[:380])
+                              raw=html if False else page
+                              look=re.search(r'<a[^>]*href=["\']([^"\']*\\/dp\\/[^"\']+)',raw,re.I)
+                              if look:
+                                  text_after=re.sub(r"<[^>]+>"," ",raw[look.start():look.start()+2200])
+                                  text_after=re.sub(r"\\s+"," ",text_after)
+                                  print("JOYBUY CARD CONTEXT",text_after[:1100])
                               html=retailer_direct._fetch_page(detail,shop)
                               print("JOYBUY PDP: bytes",len(html),"JSON-LD", "application/ld+json" in html)
                               rec=retailer_direct._retailer_product(detail,html,shop,__import__('datetime').datetime.now(__import__('datetime').timezone.utc),teaser)
