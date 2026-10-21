@@ -119,12 +119,15 @@ def format_direct_alert(deal):
     if deal.get("source_provider") in ("Cdiscount Direct", "Joybuy Direct"):
         store = "Cdiscount" if deal["source_provider"] == "Cdiscount Direct" else "Joybuy"
         ref = deal.get("direct_reference")
+        origin = deal.get("item", {}).get("direct_offer_type", "")
+        price_label = ("Цена из витрины " if origin == "RETAILER_LISTING_RRP_UNVERIFIED_PDP"
+                       else "Цена из карточки ")
         return (f"🛍️ {store}: ОНЛАЙН-ПРЕДЛОЖЕНИЕ\n{title}\n\n"
-                f"Цена из карточки {store}: {current:.2f} €\n"
+                f"{price_label}{store}: {current:.2f} €\n"
                 f"Разница с заявленной исходной ценой: {listed}%"
                 + (f" (референс {ref:.2f} €)" if ref else "") +
                 f"\nМагазин: {store}\n"
-                "Скидка не подтверждена историей цен, доставка и корзина требуют проверки.\n"
+                "Скидка не подтверждена историей цен; цену карточки, доставку и корзину перепроверь.\n"
                 f"Товар: {deal['amazon']}")
     if deal.get("source_provider") == "Bright Data Amazon Search":
         return (f"🔍 AMAZON SEARCH: ПРЕДПОЛАГАЕМАЯ АКЦИЯ\n{title}\n\n"
