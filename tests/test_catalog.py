@@ -58,10 +58,7 @@ class CatalogTests(unittest.TestCase):
             "https://amazon.fr/dp/B0G53TJ5LJ",
         )
         rows = make_catalog([row])
-        self.assertEqual(len(rows), 1)
-        self.assertIsNone(rows[0]["amazon_product_url"])
-        self.assertEqual(rows[0]["price_scope"], "mixed_merchants_unverified")
-        self.assertEqual(rows[0]["state"], "editorial_review")
+        self.assertEqual(rows, [])  # Samsung Galaxy is excluded from the catalog
 
     def test_rejects_deceptive_roundups_and_unwanted_country(self):
         items = [
