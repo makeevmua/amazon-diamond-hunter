@@ -17,8 +17,8 @@ import policy
 
 DOMAINS = {"amazon.fr": 4, "amazon.de": 3, "amazon.es": 9, "amazon.it": 8}
 ASIN = re.compile(r"^[A-Z0-9]{10}$", re.I)
-MAX_AGE_SECONDS = 3 * 3600
-MAX_CHANGE_AGE_SECONDS = 12 * 3600
+MAX_AGE_SECONDS = 90 * 60
+MAX_CHANGE_AGE_SECONDS = 4 * 3600
 PRICE_TYPES = (0, 1)  # Amazon-owned price, then cheapest marketplace NEW.
 
 
@@ -106,7 +106,7 @@ def deals_query(market, price_type=0, page=0, min_percent=20):
         "isRangeEnabled": True, "isFilterEnabled": False,
         "deltaPercentRange": [max(1, min(99, min_percent)), 100],
         "currentRange": [100, 10000000],
-        "sortType": 4, "filterErotic": True, "singleVariation": True,
+        "sortType": 1, "filterErotic": True, "singleVariation": True,
     }
 
 
