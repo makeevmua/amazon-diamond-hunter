@@ -3,3 +3,6 @@ __pycache__/
 .env
 seen.json
 .DS_Store
+.env.hunter
+fast-hunter-state.json
+fast-hunter-state.json.tmp
