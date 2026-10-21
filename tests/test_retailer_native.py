@@ -6,6 +6,7 @@ import unittest
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bot
@@ -166,6 +167,66 @@ class MerchantTests(unittest.TestCase):
         self.assertEqual(state["cdiscount_unlocker_usage"]["count"],1)
         self.assertEqual(len(rows),1)
         self.assertEqual(len(next_rows),0)
+
+    def test_cdiscount_http_403_reaches_opt_in_unlocker(self):
+        listing = '<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>'
+        def gated(url, shop):
+            if shop == "Cdiscount" and url != CD:
+                raise HTTPError(url, 403, "blocked", {}, None)
+            if url == CD:
+                return html_product("Chaise Bauhaus moderne",90.99,CD)
+            return "<html>no Joybuy products</html>"
+        with patch.dict(os.environ, {
+            "BRIGHTDATA_API_TOKEN": "mock-token",
+            "BRIGHTDATA_UNLOCKER_ZONE": "mock-zone",
+        }), patch.object(retailer_direct, "_fetch_page", side_effect=gated), \
+             patch.object(retailer_direct, "_fetch_cdiscount_with_provider", return_value=listing) as unlock:
+            state = {}
+            rows = retailer_direct.discover(state, env={
+                "RETAIL_PRODUCT_CHECKS_PER_SHOP":"1",
+                "BRIGHTDATA_CDISCOUNT_MAX_DAILY":"1",
+                "RETAIL_DIRECT_ENABLED":"true",
+            }, now=NOW)
+        self.assertEqual(unlock.call_count, 1)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(state["retailer_direct_health"]["Cdiscount"]["status"], "scanned")
+
+    def test_cdiscount_http_403_without_unlocker_reports_required_setup(self):
+        with patch.dict(os.environ, {
+            "BRIGHTDATA_API_TOKEN": "",
+            "BRIGHTDATA_UNLOCKER_ZONE": "",
+        }), patch.object(retailer_direct, "_fetch_page",
+                          side_effect=HTTPError("https://www.cdiscount.com/",403,"blocked",{},None)):
+            state = {}
+            self.assertEqual(retailer_direct.discover(state,env={
+                "RETAIL_DIRECT_ENABLED":"true",
+            },now=NOW), [])
+        self.assertEqual(state["retailer_direct_health"]["Cdiscount"]["status"],
+                         "needs_web_unlocker")
+        self.assertEqual(state["retailer_direct_health"]["Joybuy"]["status"],
+                         "unavailable")
+
+    def test_joybuy_uses_its_own_unambiguous_listing_if_pdp_blocked(self):
+        listing = ('<a href="'+JB+'">HyperX Cloud Stinger 2 Casque -44% '
+                   '€27.99 RRP €49.99</a>')
+        def fetch(url, shop):
+            if shop == "Cdiscount":
+                return "<html>no product links</html>"
+            if url == JB:
+                raise HTTPError(url, 403, "blocked", {}, None)
+            return listing
+        with patch.dict(os.environ, {"BRIGHTDATA_UNLOCKER_ZONE": "",
+                                      "BRIGHTDATA_API_TOKEN": ""}), \
+             patch.object(retailer_direct, "_fetch_page", side_effect=fetch):
+            rows = retailer_direct.discover({},env={
+                "RETAIL_PRODUCT_CHECKS_PER_SHOP":"1",
+                "RETAIL_DIRECT_ENABLED":"true",
+            },now=NOW)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["direct_source"], "Joybuy Direct")
+        self.assertEqual(rows[0]["direct_offer_type"],
+                         "RETAILER_LISTING_RRP_UNVERIFIED_PDP")
+        self.assertEqual(rows[0]["direct_claimed_percent"], 44)
 
     def test_bounded_direct_scans_and_error_handling(self):
         cdoc=('<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>')

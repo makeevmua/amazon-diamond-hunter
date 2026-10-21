@@ -341,6 +341,7 @@ def discover(state, env=None, now=None):
         cursor = int(state.get(cursor_key, 0))
         url = page_list[cursor % len(page_list)]
         state[cursor_key] = cursor + 1
+        listing_blocked = False
         try:
             markup = _fetch_page(url, shop)
             parser = ProductLinks(url)
@@ -354,9 +355,19 @@ def discover(state, env=None, now=None):
             links.sort(key=lambda row: not offers_25(row[1]))
         except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
             print(f"RETAIL DIRECT: {shop} listing unavailable ({type(exc).__name__})")
-            metrics[shop] = {"status": "unavailable", "offers": 0,
-                             "checked_at": now.isoformat(timespec="seconds")}
-            continue
+            listing_blocked = True
+            links = []
+            if shop != "Cdiscount":
+                metrics[shop] = {"status": "unavailable", "offers": 0,
+                                 "checked_at": now.isoformat(timespec="seconds")}
+                continue
+            # A 403/blocked request must also reach the optional Cdiscount
+            # provider; previously this continue made Web Unlocker unusable.
+        if listing_blocked:
+            def offers_25(teaser):
+                match = SALE.search(teaser)
+                return bool(match and max(int(x) for x in match.groups() if x) >= 25)
+        unlocker_exhausted = False
         if (not links and shop == "Cdiscount" and
                 os.getenv("BRIGHTDATA_API_TOKEN") and
                 os.getenv("BRIGHTDATA_UNLOCKER_ZONE")):
@@ -372,6 +383,7 @@ def discover(state, env=None, now=None):
                 daily_limit = 8
             if usage["count"] >= daily_limit:
                 print("RETAIL DIRECT: Cdiscount unlocker daily budget exhausted")
+                unlocker_exhausted = True
                 unlocked = None
             else:
                 # Reserve the attempt before any potential billable request.
@@ -392,9 +404,11 @@ def discover(state, env=None, now=None):
                 links = []
         # Never publish a blocked page or fabricate product records.
         if not links:
-            reason = ("needs_web_unlocker"
-                      if shop == "Cdiscount" and
-                      not env.get("BRIGHTDATA_UNLOCKER_ZONE")
+            reason = ("needs_web_unlocker" if shop == "Cdiscount" and
+                      not (os.getenv("BRIGHTDATA_API_TOKEN") and
+                           os.getenv("BRIGHTDATA_UNLOCKER_ZONE"))
+                      else "unlocker_budget_exhausted" if unlocker_exhausted
+                      else "unavailable" if listing_blocked
                       else "no_product_links")
             metrics[shop] = {"status": reason, "cards_on_listing": 0,
                              "offers": 0, "checked_at": now.isoformat(timespec="seconds")}
@@ -416,7 +430,11 @@ def discover(state, env=None, now=None):
                 item = _retailer_product(dest, details, shop, now, teaser=text)
             except (HTTPError, URLError, ValueError, OSError, TimeoutError) as exc:
                 print(f"RETAIL DIRECT: {shop} product unavailable ({type(exc).__name__})")
-                continue
+                # Joybuy's own flash-sale tile can quote one unambiguous
+                # price/RRP pair even when the product page is inaccessible.
+                # It remains clearly marked UNVERIFIED, never a PDP quote.
+                item = (_listing_fallback(dest, text, shop, now)
+                        if shop == "Joybuy" else None)
             if item:
                 out[item["link"]] = item
         state[index_key] = start + max(1, checked)

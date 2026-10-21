@@ -75,7 +75,11 @@ def enhance(directory, db_path, source_health=None):
                 return f"{shop}: проверен"
             if status == "needs_web_unlocker":
                 return f"{shop}: нужен доступ Bright Data Web Unlocker"
-            if status in ("unavailable", "no_product_links"):
+            if status == "unlocker_budget_exhausted":
+                return f"{shop}: достигнут лимит запросов на разблокировку"
+            if status == "no_product_links":
+                return f"{shop}: нет подходящих карточек в проверенной витрине"
+            if status == "unavailable":
                 return f"{shop}: источник недоступен"
             return f"{shop}: ещё не проверен"
         detail = ("<p class=\"feed-health\">Статус: " +
