@@ -30,6 +30,7 @@ import amazon_direct
 import direct_pipeline
 import keepa_discovery
 import brightdata_verify
+import brightdata_search
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -969,9 +970,16 @@ def run():
     # optional paid provider. Public RSS remains a third-choice fallback.
     keepa_offers = (keepa_discovery.discover(meta, requests_per_scan=1)
                    if not DRY_RUN else [])
-    priority_urls = {p["link"] for p in first_party}
-    direct_offers = [*first_party, *[p for p in keepa_offers if
-                    p["link"] not in priority_urls]]
+    search_offers = (brightdata_search.discover(meta)
+                     if not DRY_RUN and not direct_only else [])
+    # Prefer the first-party official API over Keepa, and Keepa historic
+    # observations over independently scraped Amazon search results.
+    direct_offers = []
+    direct_urls = set()
+    for offer in [*first_party, *keepa_offers, *search_offers]:
+        if offer["link"] not in direct_urls:
+            direct_offers.append(offer)
+            direct_urls.add(offer["link"])
     try:
         if direct_only and (amazon_direct.enabled() or bool(os.getenv("KEEPA_API_KEY"))):
             posts, available, requested = [], 0, 0
@@ -991,6 +999,7 @@ def run():
         SCAN_STATS.update({"rss_total": requested, "rss_ok": 0, "rss_unavailable": []})
     SCAN_STATS["amazon_direct"] = len(first_party)
     SCAN_STATS["keepa_deals"] = len(keepa_offers)
+    SCAN_STATS["brightdata_search"] = len(search_offers)
     # These products were actually read from the Amazon catalog, not
     # discovered via a deal-sharing website. Preserve provenance.
     posts = [*direct_offers, *[post for post in posts if
@@ -1019,10 +1028,16 @@ def run():
     native = [deal for item in first_party if
               (deal := direct_pipeline.to_candidate(item, category_matches,
                   INTERIOR_DISCOUNT, MIN_DISCOUNT))]
-    keepa_native = [deal for item in keepa_offers if
+    keepa_native = [deal for item in keepa_offers if item["link"] in direct_urls and
+              item["link"] not in {p["link"] for p in first_party} and
               (deal := direct_pipeline.keepa_candidate(item, category_matches,
                   INTERIOR_DISCOUNT, MIN_DISCOUNT))]
-    found = direct_pipeline.merge_candidates(community, [*native, *keepa_native])
+    search_native = [deal for item in search_offers if item["link"] not in
+              {p["link"] for p in first_party} | {p["link"] for p in keepa_offers} and
+              (deal := direct_pipeline.to_candidate(item, category_matches,
+                  INTERIOR_DISCOUNT, MIN_DISCOUNT))]
+    found = direct_pipeline.merge_candidates(
+        community, [*native, *keepa_native, *search_native])
     if keepa_native and not DRY_RUN:
         confirmations = brightdata_verify.verify(keepa_native[:8], meta)
         SCAN_STATS["brightdata_verified"] = len(confirmations)
