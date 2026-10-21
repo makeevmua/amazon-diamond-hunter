@@ -99,7 +99,7 @@ def normalize_deal(row, market, price_type, now=None):
     }
 
 
-def deals_query(market, price_type=0, page=0, min_percent=20):
+def deals_query(market, price_type=0, page=0, min_percent=25):
     return {
         "page": int(page), "domainId": DOMAINS[market],
         "priceTypes": [int(price_type)], "dateRange": 0,
