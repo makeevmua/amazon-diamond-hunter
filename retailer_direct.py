@@ -156,9 +156,10 @@ def _listing_fallback(url, teaser, expected_shop, now):
     ref_values = [_float(x) for x in EURO_PREFIX.findall(after)]
     ref_values += [_float(w+"."+c if c else w)
                    for w,c in EURO_SUFFIX.findall(after)]
-    ref = next((x for x in ref_values if x), None)
-    if not ref:
+    ref_values = [v for v in ref_values if v]
+    if len(ref_values) != 1:
         return None
+    ref = ref_values[0]
     before = teaser[:label.start()]
     amounts = [_float(x) for x in EURO_PREFIX.findall(before)]
     amounts += [_float(w+"."+c if c else w)
