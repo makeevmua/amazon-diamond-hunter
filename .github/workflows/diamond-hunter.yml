@@ -14,6 +14,8 @@ on:
       - '.github/workflows/diamond-hunter.yml'
       - 'state-store.sh'
       - 'pricechecks.py'
+      - 'observations.py'
+      - 'catalog_ui.py'
   schedule:
     - cron: "7,22,37,52 * * * *"
     - cron: "0 19,20 * * *" # 21:00 Paris in summer/winter; bot checks local time
@@ -71,6 +73,8 @@ jobs:
           DRY_RUN: 'false'
           CATALOG_ENABLED: 'true'
           EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
+          PEPPER_GRAPHQL_ENABLED: 'true'
+          KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}
         run: python3 bot.py
       - name: Save seen-items cache
         if: success() && github.event_name != 'push'
