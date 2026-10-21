@@ -968,7 +968,7 @@ def run():
     # Independent Keepa price-change discovery. Only full scans query this
     # optional paid provider. Public RSS remains a third-choice fallback.
     keepa_offers = (keepa_discovery.discover(meta, requests_per_scan=1)
-                   if not direct_only and not DRY_RUN else [])
+                   if not DRY_RUN else [])
     direct_offers = [*first_party, *keepa_offers]
     try:
         if direct_only and amazon_direct.enabled():
@@ -1029,6 +1029,8 @@ def run():
                 deal["brightdata_quote"] = check
                 delta = abs(check["price_eur"]-deal["headline_price"])/deal["headline_price"]
                 deal["brightdata_price_matches"] = delta <= 0.03
+                if not deal["brightdata_price_matches"]:
+                    deal["suppress_alert"] = True  # Conflicting exact-ASIN checks.
                 print(f"PRICE AUDIT: {deal['market']} {deal['item']['direct_asin']} "
                       f"match={delta <= 0.03}; Bright Data {check['price_eur']:.2f} EUR.")
     if CATALOG_ENABLED:
@@ -1088,6 +1090,8 @@ def run():
         market = candidate["market"] or "editorial-link-only"
         counts["markets"][market] = counts["markets"].get(market, 0) + 1
     for deal in found:
+        if deal.get("suppress_alert"):
+            continue
         item = deal["item"]
         source_only = deal["source_only"]
         if source_only and sent_source_only >= MAX_SOURCE_ALERTS:
