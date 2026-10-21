@@ -98,14 +98,17 @@ def get_token(env=None):
     return token
 
 
-def search_items(token, market, partner_tag, keywords):
+def search_items(token, market, partner_tag, keywords, saving_min=None):
     locale = "www." + market
-    return _post_json(API_URL, {
+    payload = {
         "keywords": keywords, "searchIndex": "All",
         "itemCount": 10, "itemPage": 1, "condition": "New",
         "partnerTag": partner_tag, "marketplace": locale,
         "resources": RESOURCES,
-    }, headers={
+    }
+    if saving_min is not None:
+        payload["minSavingPercent"] = int(saving_min)
+    return _post_json(API_URL, payload, headers={
         "Authorization": "Bearer " + token,
         "x-marketplace": locale,
     })
@@ -309,8 +312,19 @@ def discover(state, env=None, now=None, sleep_between=1.1):
             time.sleep(sleep_between)
         attempted += 1
         try:
+            # Three of four searches prioritize actual Amazon-declared deals.
+            # Every fourth query is unfiltered so a raw misprice with no
+            # advertised discount may still be discovered.
+            save = None if (cursor + i) % 4 == 0 else (
+                25 if any(word in query.lower() for word in (
+                    "design", "bauhaus", "lampe", "mobili", "möbel",
+                    "scandinav", "sessel", "tisch", "tapis", "tavolino",
+                    "fauteuil", "interior", "poltrona", "escandinavo",
+                )) else 40
+            )
             response = search_items(token, market,
-                     env["AMAZON_PARTNER_TAG_" + market[-2:].upper()], query)
+                     env["AMAZON_PARTNER_TAG_" + market[-2:].upper()], query,
+                     saving_min=save)
             items = ((response.get("searchResult") or {}).get("items") or [])
             if not isinstance(items, list):
                 continue
