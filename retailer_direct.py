@@ -26,7 +26,8 @@ PAGES = {
 }
 USER_AGENT = "DiamondHunter/3.0 (public-price-observation)"
 SALE = re.compile(r"(?:-|−)\s*(\d{2})\s*%|(\d{2})\s*%\s*(?:off|de réduction|réduction)", re.I)
-EURO = re.compile(r"(?<!\d)(\d{1,6}(?:[ .\u00a0]\d{3})*(?:[.,]\d{1,2})?)\s*€", re.I)
+EURO_SUFFIX = re.compile(r"(?<!\\d)(\\d{1,6}(?:[ .\\u00a0]\\d{3})*(?:[.,]\\d{1,2})?)\\s*€\\s*(\\d{2})?(?!\\d)", re.I)
+EURO_PREFIX = re.compile(r"€\\s*(\\d{1,6}(?:[ .\\u00a0]\\d{3})*(?:[.,]\\d{1,2})?)", re.I)
 LD_TYPE = {"Product", "https://schema.org/Product", "http://schema.org/Product"}
 
 
@@ -71,7 +72,7 @@ class ProductLinks(HTMLParser):
             self._finish()
 
     def _finish(self):
-        text = re.sub(r"\\s+", " ", " ".join(self.active["text"])).strip()
+        text = re.sub(r"\s+", " ", " ".join(self.active["text"])).strip()
         if text:
             self.links.append((self.active["url"], text[:700]))
         self.active = None
@@ -157,7 +158,8 @@ def _retailer_product(url, markup, expected_shop, now, teaser=""):
         return None
     # Only a same-product explicit crossed/reference amount from listing
     # qualifies. It is a CLAIM, not verified pre-sale pricing.
-    nums = [_float((whole.replace(" ", "") + "." + cents) if cents else whole) for whole, cents in EURO.findall(teaser)]
+    nums = [_float((whole.replace(" ", "") + "." + cents) if cents else whole) for whole, cents in EURO_SUFFIX.findall(teaser)]
+    nums.extend(_float(x) for x in EURO_PREFIX.findall(teaser))
     reference = max((n for n in nums if n and n > current * 1.25), default=None)
     hinted = SALE.search(teaser)
     pct_claim = max([int(x) for x in hinted.groups() if x] or [0]) if hinted else 0
