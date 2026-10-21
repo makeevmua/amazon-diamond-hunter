@@ -42,6 +42,7 @@ jobs:
                           try:
                               print("JOYBUY EXAMPLE URL",detail[:180])
                               print("JOYBUY TEASER",teaser[:380])
+                              print("JOYBUY TEASER END",teaser[-370:])
                               raw=html if False else page
                               look=re.search(r'<a[^>]*href=["\']([^"\']*\\/dp\\/[^"\']+)',raw,re.I)
                               if look:
