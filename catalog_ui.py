@@ -10,6 +10,7 @@ import re
 import sqlite3
 from pathlib import Path
 import observations
+import pricechecks
 
 
 def _replace_once(text, before, after):
@@ -30,6 +31,29 @@ def enhance(directory, db_path, source_health=None):
         observations.ensure(db)
         for row in cards:
             observations.enrich(row, db)
+    # Compare source-reported offers of the same ASIN only; matching an ASIN
+    # does not verify country variants, stock, shipping or seller.
+    by_asin = {}
+    for row in cards:
+        identity = pricechecks.identify(row.get("amazon_product_url"))
+        if identity:
+            market, asin = identity
+            by_asin.setdefault(asin, {}).setdefault(market, row)
+    for row in cards:
+        identity = pricechecks.identify(row.get("amazon_product_url"))
+        related = []
+        if identity:
+            market, asin = identity
+            for other_market, other in by_asin.get(asin, {}).items():
+                if other_market != market:
+                    related.append({
+                        "market": other_market,
+                        "url": other["amazon_product_url"],
+                        "advertised_price_eur": other.get("advertised_price_eur"),
+                        "source_url": other["source_url"],
+                        "disclaimer": "Price from a public post, not verified Amazon checkout",
+                    })
+        row["related_markets"] = related
     json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     site = html_path.read_text(encoding="utf-8")
     if source_health:
@@ -77,6 +101,20 @@ def enhance(directory, db_path, source_health=None):
             values = ", ".join(f'{p["advertised_price_eur"]:.2f} €' for p in prices[:4])
             details.append('<div class="history-note">Цены, указанные в публикации: ' +
                            html.escape(values) + ' (не история Amazon)</div>')
+        related = row.get("related_markets") or []
+        if related:
+            parts = []
+            for other in related:
+                price = other.get("advertised_price_eur")
+                amount = (f'{price:.2f} € в объявлении' if price is not None
+                          else 'цена не указана')
+                parts.append('<a target="_blank" rel="noopener noreferrer" href="' +
+                             html.escape(other["url"], quote=True) + '">' +
+                             html.escape(other["market"] + ': ' + amount) + ' ↗</a>')
+            details.append('<details class="cross-market"><summary>Другие страны для этого ASIN (' +
+                           str(len(related)) + ')</summary>' +
+                           ' · '.join(parts) +
+                           '<small>Одинаковый ASIN не подтверждает одинаковую комплектацию или итоговую цену во Франции.</small></details>')
         if details:
             enriched = enriched.replace('<div class="actions">', "".join(details) +
                                         '<div class="actions">', 1)
@@ -94,6 +132,10 @@ def enhance(directory, db_path, source_health=None):
 .favorite{position:absolute;right:10px;bottom:10px;width:36px;height:36px;border-radius:50%;font-size:25px;line-height:1;color:#fff;background:#17243bde;border:1px solid #ffffff60}
 .favorite[aria-pressed=true]{color:#ffca71}
 .keepa-note{font-size:11px;line-height:1.45;color:#86e3c2;margin-top:8px}
+.cross-market{font-size:11px;margin-top:10px;color:#b9dbf2;line-height:1.55}
+.cross-market summary{cursor:pointer;font-weight:700}
+.cross-market a{text-decoration:underline;color:#ffcc7c}
+.cross-market small{display:block;color:#a4b4ca;margin-top:5px}
 .history-note{font-size:11px;line-height:1.45;color:#afc0da;margin-top:8px}
 </style></head>""")
     site = _replace_once(site, 'const category=document.getElementById("category"),status=document.getElementById("status"),',
