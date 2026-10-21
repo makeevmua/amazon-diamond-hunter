@@ -69,15 +69,15 @@ TABLETOP_GAMES = re.compile(
 HAIR_PRODUCTS = re.compile(
     r"(?i)\b(?:masques?\s+capillaires?|cr[eè]mes?\s+capillaires?|"
     r"soins?\s+(?:pour\s+les\s+)?cheveux|"
-    r"shampoings?|apr[eè]s[ -]?shampoings?|"
+    r"shamp[o]+ings?|apr[eè]s[ -]?shamp[o]+ings?|"
     r"conditioners?|hair\s*(?:masks?|care|oil|serums?|cream|"
     r"sprays?|treatments?|dryers?|straighteners?|curlers?|brushes?)|"
     r"hairbrush(?:es)?|hairdryer|"
     r"huile\s+(?:pour\s+les\s+)?cheveux|"
     r"coloration\s+capillaire|s[eè]che[ -]?cheveux|"
     r"lisseurs?|boucleurs?|brosses?\s+(?:[aà]\s+)?(?:cheveux|brushing)|"
-    r"mascarillas?\s+capilares?|champ[uú]s?|acondicionadores?|"
-    r"maschere?\s+(?:per\s+)?capelli|shampoo|"
+    r"mascarillas?\s+capilar(?:es)?|champ[uú]s?|acondicionadores?|"
+    r"mascher[ae]\s+(?:per\s+)?capelli|shampoo|"
     r"sp[uü]lungen?\s+f[uü]r\s+haare|haarmasken?)\b"
 )
 
@@ -116,6 +116,7 @@ INTERIOR_DESIGN_CUES = re.compile(
     r"playful|funky|wavy|ondul[eé]s?|"
     r"tulipe|tulip|champignon|mushroom|"
     r"forme\s+(?:originale|insolite|g[eé]om[eé]trique)|"
+    r"en\s+forme\s+de\s+(?:burger|champignon|nuage|coeur|c[oœ]ur)|"
     r"food[ -]?shaped|burger[ -]?(?:chair|table)|"
     r"vitra|kartell|verner\s+panton|panthella|panton|"
     r"flos|artemide|fermob|muuto|hay\s+design|"
