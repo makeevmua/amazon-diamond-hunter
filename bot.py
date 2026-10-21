@@ -933,8 +933,15 @@ def run():
     meta = seen.setdefault("__metadata__", {})
     first_party = amazon_direct.discover(meta) if os.getenv(
         "DIRECT_AMAZON_ENABLED", "true").lower() == "true" else []
+    direct_only = os.getenv("DIRECT_ONLY_RUN", "false").lower() == "true"
     try:
-        posts, available, requested = collect()
+        if direct_only:
+            posts, available, requested = [], 0, 0
+            SCAN_STATS.clear()
+            SCAN_STATS.update({"rss_total": 0, "rss_ok": 0,
+                               "rss_unavailable": [], "pepper": 0})
+        else:
+            posts, available, requested = collect()
     except RuntimeError:
         if not first_party:
             raise
@@ -1047,7 +1054,15 @@ def run():
         dedupe_key = ("source:" + item["key"]) if source_only else deal["amazon"]
         previous = seen.get(dedupe_key)
         current_headline_price = deal["headline_price"]
-        if not alerts.meaningful_change(
+        if deal.get("direct_offer"):
+            old_price = notified_prices.get(dedupe_key)
+            pct_better = previous is None or deal["discount"] >= int(previous) + 10
+            price_better = (old_price is not None and
+                            current_headline_price <= old_price * .8 and
+                            old_price - current_headline_price >= 5)
+            if not (pct_better or price_better):
+                continue
+        elif not alerts.meaningful_change(
             previous, deal["discount"],
             notified_prices.get(dedupe_key), current_headline_price
         ):
@@ -1055,7 +1070,8 @@ def run():
         # Preserve an upgrade from source-only to direct Amazon URL.
         # For the same direct-link article, don't re-alert on unchanged claims.
         item_key = "product:" + item["key"]
-        if (not source_only and deal["discount"] > 0 and item_key in seen and
+        if (not deal.get("direct_offer") and not source_only and
+                deal["discount"] > 0 and item_key in seen and
                 deal["discount"] < int(seen[item_key]) + 10):
             continue
         pair = deal["pair"]
