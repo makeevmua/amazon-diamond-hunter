@@ -47,7 +47,12 @@ APPAREL = re.compile(
     r"camisas?|camisetas?|vestidos?|pantalones|zapatos?|"
     r"giacche|magliette|pantaloni|scarpe|"
     r"vêtements?|vetements?|clothing|apparel|mode\s+homme|"
-    r"mode\s+femme|fashion|streetwear)\b"
+    r"mode\s+femme|fashion|streetwear|"
+    r"boxers?|boxer[ -]?shorts?|cale[cç]ons?|culottes?|slips?|"
+    r"sous[ -]?v[eê]tements?|underwear|underpants|"
+    r"briefs?|trunks?|panties|lingerie|bralettes?|"
+    r"soutiens?[ -]?gorges?|knickers|mutande|"
+    r"calzoncillos?|ropa\s+interior|unterhosen?|unterw[aä]sche)\b"
 )
 TABLETOP_GAMES = re.compile(
     r"(?i)\b(?:jeux?\s+de\s+soci[ée]t[ée]|jeux?\s+de\s+plateau|"
@@ -59,6 +64,77 @@ TABLETOP_GAMES = re.compile(
 )
 
 
+# No hair products or styling tools, regardless of discount or recognizable brand.
+# Keep ordinary skin care and other user-approved categories untouched.
+HAIR_PRODUCTS = re.compile(
+    r"(?i)\b(?:masques?\s+capillaires?|cr[eè]mes?\s+capillaires?|"
+    r"soins?\s+(?:pour\s+les\s+)?cheveux|"
+    r"shampoings?|apr[eè]s[ -]?shampoings?|"
+    r"conditioners?|hair\s*(?:masks?|care|oil|serums?|cream|"
+    r"sprays?|treatments?|dryers?|straighteners?|curlers?|brushes?)|"
+    r"hairbrush(?:es)?|hairdryer|"
+    r"huile\s+(?:pour\s+les\s+)?cheveux|"
+    r"coloration\s+capillaire|s[eè]che[ -]?cheveux|"
+    r"lisseurs?|boucleurs?|brosses?\s+(?:[aà]\s+)?(?:cheveux|brushing)|"
+    r"mascarillas?\s+capilares?|champ[uú]s?|acondicionadores?|"
+    r"maschere?\s+(?:per\s+)?capelli|shampoo|"
+    r"sp[uü]lungen?\s+f[uü]r\s+haare|haarmasken?)\b"
+)
+
+# Interior is a curated *aesthetic*, not a blanket home-goods category.
+# We cannot infer visual style from merchant photos reliably: when the title
+# lacks an explicit agreed-on style cue, exclude the generic home item.
+INTERIOR_PRODUCTS = re.compile(
+    r"(?i)\b(?:"
+    r"paniers?|corbeilles?|cestas?|cestos?|laundry\s+(?:baskets?|hampers?)|"
+    r"baskets?|hampers?|storage\s+bins?|"
+    r"chaises?|fauteuils?|canap[eé]s?|tabourets?|"
+    r"chairs?|armchairs?|sofas?|stools?|"
+    r"sillas?|sillones?|sedie|sedia|poltrone?|"
+    r"tables?|tavoli?|mesa|mesas|tische?|st[uü]hle?|sessel|"
+    r"lampes?|luminaires?|abat[ -]?jour|lamps?|lampadas?|l[aá]mparas?|"
+    r"leuchten?|tischlampen?|stehlampen?|"
+    r"vases?|bougies?|bougeoirs?|candles?|candleholders?|"
+    r"miroirs?|mirrors?|espejos?|specchi|"
+    r"tapis|rugs?|carpets?|alfombras?|tappeti|"
+    r"[eé]tag[eè]res?|shelves|shelving|biblioth[eè]ques?|"
+    r"coussins?|cushions?|pillows?|rideaux?|curtains?|"
+    r"assiettes?|vaisselle|tableware|ceramics?|c[eé]ramiques?|"
+    r"meubles?|furniture|mobilier|home\s+decor|d[eé]coration"
+    r")\b"
+)
+INTERIOR_DESIGN_CUES = re.compile(
+    r"(?i)\b(?:bauhaus|memphis|nordic|nordique|nordico|n[oó]rdico|"
+    r"scandinave|scandinavian|scandinavo|escandinavo|"
+    r"modernist(?:e)?|modernismo|mid[ -]?century|"
+    r"space[ -]?age|postmodern(?:e|ist)?|"
+    r"sculptur\w*|g[eé]om[eé]triqu\w*|geometric\w*|geom[eé]tric\w*|"
+    r"minimalis\w*|asym[eé]triqu\w*|organic\s+shape|"
+    r"r[eé]tro|retro|seventies|eighties|"
+    r"(?:19)?(?:60|70|80|90)s|(?:60|70|80|90)er|"
+    r"pop[ -]?art|color[ -]?block|colour[ -]?block|"
+    r"playful|funky|wavy|ondul[eé]s?|"
+    r"tulipe|tulip|champignon|mushroom|"
+    r"forme\s+(?:originale|insolite|g[eé]om[eé]trique)|"
+    r"food[ -]?shaped|burger[ -]?(?:chair|table)|"
+    r"vitra|kartell|verner\s+panton|panthella|panton|"
+    r"flos|artemide|fermob|muuto|hay\s+design|"
+    r"ikea|alessi|fatboy|usm\s+haller)\b"
+)
+# A gaming mouse mat is not a living-room rug.
+TECHNICAL_MATS = re.compile(r"(?i)\b(?:tapis\s+(?:de\s+)?souris|mouse\s*pads?)\b")
+
+
+def matches_interior_aesthetic(title):
+    """Fail closed for generic furnishings; preserve explicit design styles."""
+    title = re.sub(r"<[^>]*>", " ", str(title or ""))
+    if TECHNICAL_MATS.search(title):
+        return True
+    if not INTERIOR_PRODUCTS.search(title):
+        return True
+    return bool(INTERIOR_DESIGN_CUES.search(title))
+
+
 def is_allowed(title, description=""):
     """Conservatively classify the offer headline, not a whole merchant page.
 
@@ -67,7 +143,10 @@ def is_allowed(title, description=""):
     """
     title = re.sub(r"<[^>]*>", " ", str(title or ""))
     description = re.sub(r"<[^>]*>", " ", str(description or ""))
-    if APPAREL.search(title) or TABLETOP_GAMES.search(title):
+    if (APPAREL.search(title) or TABLETOP_GAMES.search(title)
+            or HAIR_PRODUCTS.search(title)):
+        return False
+    if not matches_interior_aesthetic(title):
         return False
     if XBOX.search(title):
         return False
