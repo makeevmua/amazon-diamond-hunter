@@ -19,6 +19,7 @@ import bot
 import keepa_discovery
 import brightdata_verify
 import brightdata_search
+import retailer_direct
 
 
 def _read_state(path):
@@ -43,6 +44,7 @@ def scan(state, deliver):
     amazon_direct.add_watchlist(state, [doc["link"] for doc in docs])
     docs.extend(keepa_discovery.discover(state, requests_per_scan=1))
     docs.extend(brightdata_search.discover(state))
+    docs.extend(retailer_direct.discover(state))
     recent = state.setdefault("worker_alert_state", {})
     sent = 0
     try:
@@ -102,8 +104,10 @@ def scan(state, deliver):
 
 
 def main():
-    if not amazon_direct.enabled() and not os.getenv("KEEPA_API_KEY") and not os.getenv("BRIGHTDATA_API_TOKEN"):
-        print("FAST HUNTER: configure either Keepa API key or Amazon Creators access.",
+    if (not amazon_direct.enabled() and not os.getenv("KEEPA_API_KEY") and
+            not os.getenv("BRIGHTDATA_API_TOKEN") and
+            os.getenv("RETAIL_DIRECT_ENABLED", "true").lower() == "false"):
+        print("FAST HUNTER: no direct retailer or API source enabled.",
               file=sys.stderr)
         return 2
     if not os.getenv("TELEGRAM_BOT_TOKEN") or not os.getenv("TELEGRAM_CHAT_ID"):
