@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 import policy
 
 
-def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=50):
+def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=25):
     """Independently observed Keepa price falls; no Amazon checkout claim."""
     if item.get("direct_source") != "Keepa Deals":
         return None
@@ -17,8 +17,8 @@ def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=
         return None
     categories = category_fn(title)
     if not categories:
-        return None
-    threshold = interior_threshold if "design & interior" in categories else regular_threshold
+        categories = ["other"]
+    threshold = 25
     drop = item.get("keepa_drop90_percent")
     if type(drop) not in (int, float) or drop < threshold:
         return None
@@ -48,7 +48,7 @@ def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=
     }
 
 
-def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=50):
+def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=25):
     if item.get("direct_source") not in ("Amazon Creators API", "Bright Data Amazon Search"):
         return None
     title = item.get("title", "")
@@ -56,13 +56,13 @@ def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=50)
         return None
     categories = category_fn(title)
     if not categories:
-        return None
-    threshold = interior_threshold if "design & interior" in categories else regular_threshold
+        categories = ["other"]
+    threshold = 25
     listed_pct = int(item.get("direct_claimed_percent") or 0)
     observed_pct = int(item.get("direct_observed_drop") or 0)
     # Actual previous observed price is stronger than Amazon's list/reference
     # price. Allow observed 30% drop if the absolute product is relevant.
-    good_direct = listed_pct >= threshold or observed_pct >= max(30, threshold - 10)
+    good_direct = listed_pct >= threshold or observed_pct >= threshold
     if not good_direct:
         return None
     current = item.get("direct_current_eur")
@@ -79,7 +79,7 @@ def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=50)
         "discount": alert_pct, "pair": None, "priority": alert_pct + 30,
         "market": market, "category": ", ".join(categories),
         "source_only": False, "merchant_comparison": False,
-        "signal": "direct_observed_drop" if observed_pct >= max(30, threshold - 10)
+        "signal": "direct_observed_drop" if observed_pct >= threshold
                   else "direct_amazon_promo",
         "headline_price": current, "public_baseline": None,
         "image": item.get("image"),
