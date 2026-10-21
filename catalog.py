@@ -200,7 +200,7 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
     payload = {
         "exported_at": latest_export,
         "note": "Public advertisements only. NOT verified Amazon prices, sellers or delivery.",
-        "sources": "France, Spain, Italy (no US/UK)",
+        "sources": "France, Germany, Spain, Italy (no US/UK)",
         "total_saved": total, "exported": len(rows),
         "offers": rows,
     }
@@ -257,7 +257,7 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101520">
-<meta name="description" content="Diamond Hunter: найденные предложения из Франции, Испании и Италии.">
+<meta name="description" content="Diamond Hunter: найденные предложения из Франции, Германии, Испании и Италии.">
 <title>Diamond Hunter — Витрина находок</title>
 <style>
 :root{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark;--bg:#0c111b;--card:#1b2635;--edge:#304055;--text:#f2f6ff;--dim:#a7b7cc;--gold:#ffca71;--mint:#83e8c6}
@@ -315,7 +315,7 @@ footer a{color:#e7c681}
 <div class="wrap">
 <section class="hero"><div class="eyebrow">ВИТРИНА НАХОДОК</div>
 <h1>Хорошие вещи.<br>Интересные цены.</h1>
-<p class="lead">Дизайнерский интерьер, LEGO, электроника и необычные предложения — из Франции, Испании и Италии. Найденная цена <strong>не проверена на Amazon</strong>. Открой карточку и уточни продавца, комплектацию и конечную стоимость доставки.</p>
+<p class="lead">Дизайнерский интерьер, LEGO, электроника и необычные предложения — из Франции, Германии, Испании и Италии. Найденная цена <strong>не проверена на Amazon</strong>. Открой карточку и уточни продавца, комплектацию и конечную стоимость доставки.</p>
 <div class="stats"><div class="stat"><b>COUNT</b><span>объявлений в базе</span></div>
 <div class="stat"><b id="amazon-count">—</b><span>с прямой ссылкой Amazon</span></div>
 <div class="stat"><b id="priced-count">—</b><span>с заявленной ценой</span></div></div></section>
