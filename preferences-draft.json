@@ -52,7 +52,7 @@
     "independently_verified",
     "potential_deal_labeled_unverified"
   ],
-  "note": "Parallel FR/ES/IT RSS scanner with filtered storefront and claimed/unverified discount data. Xbox excluded, Samsung SSD only, PC/PlayStation/Nintendo kept. Discounts are NOT verified current Amazon savings.",
+  "note": "Parallel FR/ES/IT RSS scanner with filtered storefront and claimed/unverified discount data. Xbox excluded, Samsung SSD only, PC/PlayStation/Nintendo kept. Discounts are NOT verified current Amazon savings. Amazon.de included from German sources.",
   "notifications": {
     "channel": "telegram",
     "deal_delivery": {
@@ -122,6 +122,7 @@
   },
   "markets": [
     "amazon.fr",
+    "amazon.de",
     "amazon.es",
     "amazon.it"
   ],
@@ -141,6 +142,7 @@
     "link_must_target_exact_product_page_on_source_marketplace": true,
     "direct_link_examples": [
       "https://www.amazon.fr/dp/ASIN",
+      "https://www.amazon.de/dp/ASIN",
       "https://www.amazon.es/dp/ASIN",
       "https://www.amazon.it/dp/ASIN"
     ],
@@ -295,6 +297,7 @@
   "search_region": {
     "active_markets": [
       "amazon.fr",
+      "amazon.de",
       "amazon.es",
       "amazon.it"
     ],
@@ -311,7 +314,8 @@
     "community_deals": [
       "Dealabs France",
       "Chollometro Spain",
-      "QuantoSpendo Italy"
+      "QuantoSpendo Italy",
+      "mydealz Germany"
     ],
     "editorial_france": [
       "Les Numériques"
@@ -319,14 +323,15 @@
     "lego_specific_amazon_feeds": [
       "https://brickset.com/feed/amazon/fr",
       "https://brickset.com/feed/amazon/es",
-      "https://brickset.com/feed/amazon/it"
+      "https://brickset.com/feed/amazon/it",
+      "https://brickset.com/feed/amazon/de"
     ],
     "avoid": [
       "United Kingdom deal feeds",
       "United States deal feeds",
       "pan-European feeds containing unwanted countries"
     ],
-    "note": "Added themed Dealabs RSS feeds for jardin-bricolage, jeux-jouets, sante-et-cosmetiques, accessoires-gadgets, animaux and culture-divertissement. Availability is checked per run; no paid private API."
+    "note": "Added themed Dealabs RSS feeds for jardin-bricolage, jeux-jouets, sante-et-cosmetiques, accessoires-gadgets, animaux and culture-divertissement. Availability is checked per run; no paid private API. German Amazon.de (shipping to FR remains unverified); mydealz.de RSS availability is checked during every run."
   },
   "findings_database": {
     "enabled": true,
@@ -341,6 +346,7 @@
     "watchlist_does_not_send_notifications": true,
     "supported_markets": [
       "amazon.fr",
+      "amazon.de",
       "amazon.es",
       "amazon.it"
     ],
