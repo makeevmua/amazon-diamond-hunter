@@ -28,6 +28,8 @@ import catalog_ui
 import sqlite3
 import amazon_direct
 import direct_pipeline
+import keepa_discovery
+import brightdata_verify
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -963,8 +965,15 @@ def run():
     first_party = amazon_direct.discover(meta) if os.getenv(
         "DIRECT_AMAZON_ENABLED", "true").lower() == "true" else []
     direct_only = os.getenv("DIRECT_ONLY_RUN", "false").lower() == "true"
+    # Independent Keepa price-change discovery. Only full scans query this
+    # optional paid provider. Public RSS remains a third-choice fallback.
+    keepa_offers = (keepa_discovery.discover(meta, requests_per_scan=1)
+                   if not DRY_RUN else [])
+    priority_urls = {p["link"] for p in first_party}
+    direct_offers = [*first_party, *[p for p in keepa_offers if
+                    p["link"] not in priority_urls]]
     try:
-        if direct_only and amazon_direct.enabled():
+        if direct_only and (amazon_direct.enabled() or bool(os.getenv("KEEPA_API_KEY"))):
             posts, available, requested = [], 0, 0
             SCAN_STATS.clear()
             SCAN_STATS.update({"rss_total": 0, "rss_ok": 0,
@@ -975,16 +984,17 @@ def run():
         else:
             posts, available, requested = collect()
     except RuntimeError:
-        if not first_party:
+        if not direct_offers:
             raise
-        print("FALLBACK: community sources unavailable, direct Amazon quotes retained.")
+        print("FALLBACK: community sources unavailable, direct price observations retained.")
         posts, available, requested = [], 0, len(configured_feeds())
         SCAN_STATS.update({"rss_total": requested, "rss_ok": 0, "rss_unavailable": []})
     SCAN_STATS["amazon_direct"] = len(first_party)
+    SCAN_STATS["keepa_deals"] = len(keepa_offers)
     # These products were actually read from the Amazon catalog, not
     # discovered via a deal-sharing website. Preserve provenance.
-    posts = [*first_party, *[post for post in posts if
-              post.get("link") not in {p["link"] for p in first_party}]]
+    posts = [*direct_offers, *[post for post in posts if
+              post.get("link") not in {p["link"] for p in direct_offers}]]
     before_scope_filter = len(posts)
     posts = [item for item in posts if policy.is_allowed(item.get("title"), item.get("description"))]
     print(f"PRODUCT POLICY: {before_scope_filter - len(posts)} unwanted Xbox/Samsung listings excluded.")
@@ -1009,7 +1019,23 @@ def run():
     native = [deal for item in first_party if
               (deal := direct_pipeline.to_candidate(item, category_matches,
                   INTERIOR_DISCOUNT, MIN_DISCOUNT))]
-    found = direct_pipeline.merge_candidates(community, native)
+    keepa_native = [deal for item in keepa_offers if
+              (deal := direct_pipeline.keepa_candidate(item, category_matches,
+                  INTERIOR_DISCOUNT, MIN_DISCOUNT))]
+    found = direct_pipeline.merge_candidates(community, [*native, *keepa_native])
+    if keepa_native and not DRY_RUN:
+        confirmations = brightdata_verify.verify(keepa_native[:8], meta)
+        SCAN_STATS["brightdata_verified"] = len(confirmations)
+        for deal in keepa_native:
+            check = confirmations.get(deal["amazon"])
+            if check:
+                deal["brightdata_quote"] = check
+                delta = abs(check["price_eur"]-deal["headline_price"])/deal["headline_price"]
+                deal["brightdata_price_matches"] = delta <= 0.03
+                if not deal["brightdata_price_matches"]:
+                    deal["suppress_alert"] = True  # Conflicting exact-ASIN checks.
+                print(f"PRICE AUDIT: {deal['market']} {deal['item']['direct_asin']} "
+                      f"match={delta <= 0.03}; Bright Data {check['price_eur']:.2f} EUR.")
     if CATALOG_ENABLED:
         catalog_records = catalog.collect_records(
             posts, found, category_matches, percent, price_pair,
@@ -1067,6 +1093,8 @@ def run():
         market = candidate["market"] or "editorial-link-only"
         counts["markets"][market] = counts["markets"].get(market, 0) + 1
     for deal in found:
+        if deal.get("suppress_alert"):
+            continue
         item = deal["item"]
         source_only = deal["source_only"]
         if source_only and sent_source_only >= MAX_SOURCE_ALERTS:
@@ -1169,6 +1197,13 @@ def run():
             )
         if deal.get("direct_offer"):
             message = direct_pipeline.format_direct_alert(deal)
+            check = deal.get("brightdata_quote")
+            if check:
+                message += ("\nСверка Bright Data: " +
+                            f"{check['price_eur']:.2f} €; " +
+                            ("совпало с Keepa в пределах 3%." if deal.get("brightdata_price_matches")
+                             else "ЦЕНЫ НЕ СОВПАЛИ — перепроверь перед покупкой.") +
+                            " Корзина/доставка не проверены.")
         buttons = alerts.deal_buttons(deal["amazon"],
                   None if deal.get("direct_offer") else item["link"])
         if deal.get("direct_offer") and buttons:

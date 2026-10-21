@@ -130,7 +130,8 @@ class DirectDiscoveryTests(unittest.TestCase):
         deliveries = []
         def deliver(message, buttons, photo):
             deliveries.append(message)
-        with patch.object(fast_hunter.amazon_direct, "discover", return_value=[item]), \
+        with patch.object(fast_hunter.amazon_direct, "enabled", return_value=True), \
+             patch.object(fast_hunter.amazon_direct, "discover", return_value=[item]), \
              patch.object(fast_hunter, "time") as clk:
             clk.time.return_value = 1200000
             self.assertEqual(fast_hunter.scan(state, deliver), 1)

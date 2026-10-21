@@ -1,5 +1,20 @@
 # 💎 Amazon Diamond Hunter FREE — four-market candidate scout
 
+## Direct price discovery without Amazon Partenaires
+
+**Production-ready adapters (provider accounts required):**
+
+- **Keepa Deals** scans Amazon.fr, Amazon.de, Amazon.es and Amazon.it *directly from Keepa's market price-change index*, independently of user-submitted Dealabs/Mydealz posts. Current Amazon seller price or NEW marketplace price and the actual Keepa 90-day weighted average are strictly separated. The alert includes the data source, last observed price/change time and the fact that checkout/shipping to France are unverified.
+- **Bright Data** verifies the exact Amazon product URL/ASIN on high-priority Keepa candidates, only if both the product and the EUR-currency field match. If the verified current price differs by more than 3% from Keepa, the alert is held back. An asynchronous/pending Bright Data snapshot is **not** fabricated as a live check.
+- **Amazon Creators** remains optional. Neither Keepa nor Bright Data depends on Amazon Partners. RSS/Pepper remain backups and discovery aids, not the only source.
+- **Keepa budget:** requests to the Deals endpoint cost 5 Keepa tokens each. Default `KEEPA_MAX_DEAL_QUERIES_PER_DAY=64`, spread automatically across the full UTC day, so hourly API use does not exhaust the entire quota by morning. A higher quota can be chosen only with a suitable Key/plan. Calls are made only when a Keepa API key exists. `KEEPA_DEAL_QUERIES=1` limits each request batch; no planned requests without a key.
+- **Bright Data budget:** one exact-product check per scan (`BRIGHTDATA_PER_SCAN=1`) only when a token is configured, with automatic caps of 80 requests/day and 3,200 requests/month and no rechecking the same product more than once in four hours. These are **our** caps, not provider-side billing controls; the owner's Bright Data billing dashboard should also impose spending limits. No paid requests without a token.
+- **Speed:** direct data changes can be checked on scheduled five-minute GitHub Actions runs, but GitHub can be delayed and Keepa itself may update prices later than Amazon. For a permanently running process see `fast_hunter.py` / `docker-compose.fast-hunter.yml`. A 1–2 minute price glitch is not guaranteed to be detected even with fast polling or a paid provider.
+
+**Secrets:** GitHub → [Settings > Secrets and variables > Actions](https://github.com/makeevmua/amazon-diamond-hunter/settings/secrets/actions) → add `KEEPA_API_KEY` and optionally `BRIGHTDATA_API_TOKEN`. Do not paste keys into this repo, chatbot messages, or `preferences-draft.json`. Adding **at least one valid provider API key** is the missing activation step. An empty key disables that provider completely. Keepa access requires a separate paid subscription; Bright Data offers a limited free trial/tier according to its current terms.
+
+**Source documentation:** [Keepa Deals API](https://keepa.com/api-docs/deals.html); [Keepa Deal Object](https://keepa.com/api-docs/deal-object.html); [Bright Data Amazon API](https://brightdata.com/products/web-scraper/amazon). These data sources are **not** first-party Amazon APIs, but they observe Amazon product pages/prices independently from discount forums.
+
 ## Amazon-first Hunter — прямой поиск и оперативные уведомления (2026-10-21)
 
 **Новый источник:** официальный Amazon Creators API `SearchItems` ищет новые товары непосредственно в Amazon.fr/.de/.es/.it по сменяющимся запросам (SSD, PlayStation, игры ПК, комплектующие, LEGO, интерьер, Apple и др.). Дополнительный `GetItems` повторно проверяет до 10 точных ASIN в запросе. ASIN из публикаций форумов и Amazon-поиска автоматически добавляются в *список наблюдения*. Обнаружение цены не зависит от того, опубликовал ли её кто-то в Dealabs. Полного перебора миллионов Amazon-товаров нет, поэтому **все короткие ценовые ошибки не гарантируются**.
