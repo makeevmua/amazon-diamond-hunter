@@ -222,7 +222,16 @@ def discover(state, env=None, now=None):
         return []
     out = {}
     metrics = state.setdefault("retailer_direct_health", {})
+    try:
+        min_interval = max(300, min(3600, int(env.get("RETAIL_SCAN_INTERVAL_SECONDS", "600"))))
+    except (ValueError, TypeError):
+        min_interval = 600
+    last_checked = state.setdefault("retailer_direct_last_checked", {})
     for shop in ("Cdiscount", "Joybuy"):
+        last = last_checked.get(shop)
+        if isinstance(last, (float, int)) and 0 <= now.timestamp() - last < min_interval:
+            continue
+        last_checked[shop] = now.timestamp()
         page_list = PAGES[shop]
         cursor_key = "retailer_" + shop.lower() + "_cursor"
         cursor = int(state.get(cursor_key, 0))
