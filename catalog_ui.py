@@ -67,6 +67,21 @@ def enhance(directory, db_path, source_health=None):
         cdiscount_count = int(source_health.get("cdiscount_direct", 0))
         joybuy_count = int(source_health.get("joybuy_direct", 0))
         watch_asins = int(source_health.get("watch_asins", 0))
+        retailer_health = source_health.get("retailer_health") or {}
+        cstatus = (retailer_health.get("Cdiscount") or {}).get("status", "unknown")
+        jstatus = (retailer_health.get("Joybuy") or {}).get("status", "unknown")
+        def readable(status, shop):
+            if status == "scanned":
+                return f"{shop}: проверен"
+            if status == "needs_web_unlocker":
+                return f"{shop}: нужен доступ Bright Data Web Unlocker"
+            if status in ("unavailable", "no_product_links"):
+                return f"{shop}: источник недоступен"
+            return f"{shop}: ещё не проверен"
+        detail = ("<p class=\"feed-health\">Статус: " +
+                  html.escape(readable(cstatus, "Cdiscount")) + " · " +
+                  html.escape(readable(jstatus, "Joybuy")) +
+                  " · 0 находок не означает, что в магазине нет скидок</p>")
         summary = ('<p class="feed-health">Цены Amazon: Creators ' +
                    str(amazon_direct_count) + ' · Keepa Deals ' +
                    str(keepa_count) + ' · Bright Data ' +
@@ -77,7 +92,7 @@ def enhance(directory, db_path, source_health=None):
                    str(watch_asins) + ' · RSS: ' + str(rss_ok) + '/' +
                    str(rss_total) + ' · Pepper: ' + str(pepper_received) +
                    ' · итог корзины/доставка не проверены</p>')
-        site = _replace_once(site, '<div class="stats">', summary + '<div class="stats">')
+        site = _replace_once(site, '<div class="stats">', summary + detail + '<div class="stats">')
 
     articles = re.findall(r'<article class="card"[^>]*>.*?</article>', site, flags=re.S)
     if len(articles) != len(cards):
