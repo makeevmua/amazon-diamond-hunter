@@ -617,7 +617,7 @@ def configured_feeds():
     if RSS_URL:  # Explicit local/debug override remains unchanged.
         return [RSS_URL]
     urls = list(FEEDS)
-    for raw in re.split(r"[,;\\n]+", os.getenv("EXTRA_RSS_FEEDS", "")):
+    for raw in re.split(r"[,;\n]+", os.getenv("EXTRA_RSS_FEEDS", "")):
         url = raw.strip()
         if not url or url in urls:
             continue
