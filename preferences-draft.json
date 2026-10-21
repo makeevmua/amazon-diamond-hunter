@@ -93,7 +93,7 @@
       "note": "Daily report generated from cached RSS scan counts. GitHub Actions scheduling is not exact, may be delayed or missed."
     },
     "source_only_promising_alerts": {
-      "enabled": false,
+      "enabled": true,
       "name": "Перспективная находка",
       "source_domains": [
         "dealabs.com",
@@ -256,7 +256,7 @@
     "note": "RSS keyword/style matching only: no computer vision or verified aesthetic classification, no guarantee a listed item looks like this."
   },
   "unexpected_diamond": {
-    "enabled": false,
+    "enabled": true,
     "min_claimed_discount_percent": 80,
     "allowed_outside_categories": true,
     "recognizable_brand_required": true,
