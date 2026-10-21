@@ -6,6 +6,7 @@ a strictly short-lived cache can be used as a stronger independent signal.
 """
 from urllib.parse import urlsplit
 import policy
+import retail_scope
 
 
 def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=25):
@@ -49,7 +50,8 @@ def keepa_candidate(item, category_fn, interior_threshold=25, regular_threshold=
 
 
 def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=25):
-    if item.get("direct_source") not in ("Amazon Creators API", "Bright Data Amazon Search"):
+    if item.get("direct_source") not in ("Amazon Creators API", "Bright Data Amazon Search",
+                                         "Cdiscount Direct", "Joybuy Direct"):
         return None
     title = item.get("title", "")
     if not policy.is_allowed(title):
@@ -70,7 +72,7 @@ def to_candidate(item, category_fn, interior_threshold=25, regular_threshold=25)
         return None
     link = item["link"]
     market = (urlsplit(link).hostname or "").lower()
-    if market not in ("amazon.fr", "amazon.de", "amazon.es", "amazon.it"):
+    if retail_scope.shop(link) not in ("Amazon", "Cdiscount", "Joybuy"):
         return None
     claimed_saving = max(0, listed_pct)
     alert_pct = max(claimed_saving, observed_pct)
@@ -114,6 +116,16 @@ def format_direct_alert(deal):
     market = deal["market"]
     observed = deal.get("direct_observed_pct") or 0
     listed = deal.get("direct_list_pct") or 0
+    if deal.get("source_provider") in ("Cdiscount Direct", "Joybuy Direct"):
+        store = "Cdiscount" if deal["source_provider"] == "Cdiscount Direct" else "Joybuy"
+        ref = deal.get("direct_reference")
+        return (f"🛍️ {store}: ОНЛАЙН-ПРЕДЛОЖЕНИЕ\n{title}\n\n"
+                f"Цена из карточки {store}: {current:.2f} €\n"
+                f"Разница с заявленной исходной ценой: {listed}%"
+                + (f" (референс {ref:.2f} €)" if ref else "") +
+                f"\nМагазин: {store}\n"
+                "Скидка не подтверждена историей цен, доставка и корзина требуют проверки.\n"
+                f"Товар: {deal['amazon']}")
     if deal.get("source_provider") == "Bright Data Amazon Search":
         return (f"🔍 AMAZON SEARCH: ПРЕДПОЛАГАЕМАЯ АКЦИЯ\n{title}\n\n"
                 f"Цена из поисковой выдачи Amazon по Bright Data: {current:.2f} €\n"
