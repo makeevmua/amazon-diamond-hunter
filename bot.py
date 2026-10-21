@@ -22,6 +22,8 @@ import media
 import catalog
 import policy
 import pepper
+import observations
+import pricechecks
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -926,6 +928,15 @@ def run():
             fresh_enough, find_amazon_link,
         )
         saved_count = catalog.save_records(catalog_records, CATALOG_PATH)
+        changed = observations.record_public_changes(catalog_records, CATALOG_PATH)
+        print(f"PUBLIC PRICE CHANGES: {changed} new publication-price values, not Amazon ticks.")
+        keepa_key = os.getenv("KEEPA_API_KEY", "")
+        today_utc = datetime.now(timezone.utc).date().isoformat()
+        if keepa_key and meta.get("keepa_check_day") != today_utc and not DRY_RUN:
+            checked = pricechecks.check_catalog(catalog_records, key=keepa_key, max_checks=4)
+            count = observations.record_keepa(checked, CATALOG_PATH)
+            meta["keepa_check_day"] = today_utc
+            print(f"KEEPA: {count} fresh source-labelled ASIN observations; checkout price is unverified.")
         exported = catalog.export(CATALOG_PATH, CATALOG_EXPORT_DIR)
         print(
             f"FINDINGS DATABASE: {saved_count} unique source publications; "
