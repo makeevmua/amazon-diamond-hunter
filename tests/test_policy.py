@@ -49,6 +49,62 @@ class ProductPolicyTests(unittest.TestCase):
         self.assertTrue(policy.is_allowed("Casque PlayStation PS5", "compatible PC et Xbox"))
         self.assertFalse(policy.is_allowed("Manette sans fil", "compatible Xbox Series X"))
 
+
+    def test_no_underwear_or_any_hair_products(self):
+        excluded = (
+            "CALVIN KLEIN Icon Boxers coton stretch",
+            "Calvin Klein boxers 3 pack",
+            "Lot de 3 caleçons homme",
+            "Sous-vêtements en coton",
+            "Men's underwear cotton trunks",
+            "Slips homme 5-pack",
+            "FINO Masque capillaire Premium Touch 230 g",
+            "Fino hair mask Premium Touch",
+            "Shampooing cheveux secs",
+            "Après-shampoing soin cheveux",
+            "Hair dryer Dyson Supersonic",
+            "Lisseur cheveux GHD",
+            "Maschera per capelli",
+            "Mascarilla capilar",
+        )
+        for title in excluded:
+            with self.subTest(title=title):
+                self.assertFalse(policy.is_allowed(title))
+        for title in ("Crème visage La Roche-Posay", "Brosse à dents Oral-B",
+                      "LEGO Technic 1:8 Supercar", "Nintendo Switch 2"):
+            with self.subTest(title=title):
+                self.assertTrue(policy.is_allowed(title))
+
+    def test_interior_only_when_agreed_design_is_explicit(self):
+        generic = (
+            "JOYFURNOS Grand Panier à Linge en Bambou",
+            "Panier à linge avec couvercle 60L",
+            "Bamboo laundry basket storage",
+            "Chaise de bureau ergonomique simple",
+            "Lampe de chevet classique blanc",
+            "Vase céramique jaune",
+            "Table basse en bois",
+            "Tapis rond de salon beige",
+        )
+        for title in generic:
+            with self.subTest(title=title):
+                self.assertFalse(policy.is_allowed(title))
+        wanted = (
+            "Chaise Bauhaus design",
+            "Vase sculptural géométrique jaune",
+            "Lampe style Memphis colorée",
+            "Table basse Mid-Century Modernist",
+            "Miroir ondulé pop art",
+            "Canapé scandinave minimaliste",
+            "Panier à linge sculptural style Memphis",
+            "Lampe champignon Space Age",
+            "Tapis Bauhaus",
+            "Tapis de souris Logitech G Pro gaming",
+        )
+        for title in wanted:
+            with self.subTest(title=title):
+                self.assertTrue(policy.is_allowed(title))
+
     def test_only_samsung_ssds_remain(self):
         allow = ("Samsung SSD 990 Pro 2 To", "SSD Samsung 870 EVO",
                  "Samsung 980 NVMe pour PS5", "Samsung T7 Shield 2TB")
