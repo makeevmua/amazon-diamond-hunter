@@ -22,6 +22,7 @@ on:
       - 'keepa_discovery.py'
       - 'brightdata_verify.py'
       - 'brightdata_search.py'
+      - 'retail_scope.py'
       - 'brightdata_probe.py'
   schedule:
     - cron: "3,18,33,48 * * * *" # Full discovery every 15m
@@ -71,6 +72,7 @@ jobs:
         env:
           DRY_RUN: 'true'
           CATALOG_ENABLED: 'true'
+          RETAILER_ONLY: 'true'
           EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
           PEPPER_GRAPHQL_ENABLED: 'true'
           DIRECT_AMAZON_ENABLED: 'false' # No credentials in preview.
@@ -93,6 +95,7 @@ jobs:
           MAX_NOTIFICATIONS: '5'
           DRY_RUN: 'false'
           CATALOG_ENABLED: 'true'
+          RETAILER_ONLY: 'true'
           EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
           PEPPER_GRAPHQL_ENABLED: 'true'
           KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}
