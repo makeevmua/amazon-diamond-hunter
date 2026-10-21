@@ -60,6 +60,8 @@ jobs:
         if: github.event_name == 'push'
         env:
           BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          BRIGHTDATA_CDISCOUNT_MAX_DAILY: '8'
         run: |
           python3 -c 'import os; print("BRIGHT DATA TOKEN:", "CONNECTED" if os.getenv("BRIGHTDATA_API_TOKEN", "").strip() else "NOT CONFIGURED IN GITHUB ACTIONS")'
       - name: Bright Data integration probe
@@ -67,6 +69,8 @@ jobs:
         continue-on-error: true
         env:
           BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          BRIGHTDATA_CDISCOUNT_MAX_DAILY: '8'
         run: python3 brightdata_probe.py
       - name: Dry-run global RSS scan (push, no Telegram)
         if: github.event_name == 'push'
@@ -102,6 +106,8 @@ jobs:
           KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}
           KEEPA_MAX_DEAL_QUERIES_PER_DAY: '64'
           BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          BRIGHTDATA_CDISCOUNT_MAX_DAILY: '8'
           BRIGHTDATA_PER_SCAN: '1'
           BRIGHTDATA_SEARCH_ENABLED: 'true'
           BRIGHTDATA_SEARCH_PER_DAY: '1'
