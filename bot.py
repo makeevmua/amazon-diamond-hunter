@@ -25,6 +25,8 @@ import pepper
 import observations
 import pricechecks
 import catalog_ui
+import amazon_direct
+import direct_pipeline
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -664,8 +666,21 @@ def _read_one_feed(url):
         return url, [], type(error).__name__
 
 
-def collect():
-    feed_urls = configured_feeds()
+# Smaller rapid fallback when direct Amazon credentials are not configured.
+# Never poll all 24 public feeds every five minutes.
+FAST_RSS_PUBLISHERS = (
+    "https://www.dealabs.com/rss",
+    "https://www.dealabs.com/rss/groupe/informatique",
+    "https://www.dealabs.com/rss/groupe/consoles-jeux-video",
+    "https://www.chollometro.com/rss",
+    "https://www.mydealz.de/rss/new",
+    "https://quantospendo.app/offerte/feed.xml",
+)
+
+
+def collect(fast_only=False):
+    feed_urls = (list(FAST_RSS_PUBLISHERS) if fast_only and not RSS_URL
+                 else configured_feeds())
     SCAN_STATS.clear()
     SCAN_STATS.update({"rss_total": len(feed_urls), "rss_ok": 0, "rss_unavailable": [], "pepper": 0})
     posts = {}
@@ -685,7 +700,8 @@ def collect():
                 unique = item["link"] or item["key"]
                 if unique and unique not in posts:
                     posts[unique] = item
-    if os.getenv("PEPPER_GRAPHQL_ENABLED", "false").lower() == "true" and not RSS_URL:
+    if (not fast_only and os.getenv("PEPPER_GRAPHQL_ENABLED", "false").lower() == "true"
+            and not RSS_URL):
         # Anonymous best-effort secondary channel. Failure must never break RSS.
         pepper_posts = pepper.fetch_public_threads()
         SCAN_STATS["pepper"] = len(pepper_posts)
@@ -926,15 +942,59 @@ def run():
         not os.getenv("TELEGRAM_CHAT_ID")
     ):
         raise RuntimeError("Create Telegram bot and set both Actions secrets first.")
-    posts, available, requested = collect()
+    # First-party Amazon discovery runs before any community search latency.
+    seen = get_seen()
+    meta = seen.setdefault("__metadata__", {})
+    first_party = amazon_direct.discover(meta) if os.getenv(
+        "DIRECT_AMAZON_ENABLED", "true").lower() == "true" else []
+    direct_only = os.getenv("DIRECT_ONLY_RUN", "false").lower() == "true"
+    try:
+        if direct_only and amazon_direct.enabled():
+            posts, available, requested = [], 0, 0
+            SCAN_STATS.clear()
+            SCAN_STATS.update({"rss_total": 0, "rss_ok": 0,
+                               "rss_unavailable": [], "pepper": 0})
+        elif direct_only:
+            print("FAST FALLBACK: Creators credentials missing, sampling six fresh EU RSS streams.")
+            posts, available, requested = collect(fast_only=True)
+        else:
+            posts, available, requested = collect()
+    except RuntimeError:
+        if not first_party:
+            raise
+        print("FALLBACK: community sources unavailable, direct Amazon quotes retained.")
+        posts, available, requested = [], 0, len(configured_feeds())
+        SCAN_STATS.update({"rss_total": requested, "rss_ok": 0, "rss_unavailable": []})
+    SCAN_STATS["amazon_direct"] = len(first_party)
+    # These products were actually read from the Amazon catalog, not
+    # discovered via a deal-sharing website. Preserve provenance.
+    posts = [*first_party, *[post for post in posts if
+              post.get("link") not in {p["link"] for p in first_party}]]
     before_scope_filter = len(posts)
     posts = [item for item in posts if policy.is_allowed(item.get("title"), item.get("description"))]
     print(f"PRODUCT POLICY: {before_scope_filter - len(posts)} unwanted Xbox/Samsung listings excluded.")
-    seen = get_seen()
-    meta = seen.setdefault("__metadata__", {})
+    # Keep exact retailer identifiers discovered from the public sources.
+    # Subsequent Creators GetItems queries see future price changes at Amazon
+    # directly, without waiting for a forum user to announce that change.
+    watch_urls = []
+    for post in posts:
+        if post.get("direct_source"):
+            watch_urls.append(post["link"])
+            continue
+        text = (post.get("description", "") + " " + post.get("content", ""))[:2800]
+        if "amazon." in text.lower():
+            address = find_amazon_link(text)
+            if address:
+                watch_urls.append(address)
+    watched = amazon_direct.add_watchlist(meta, watch_urls)
+    SCAN_STATS["watch_asins"] = watched
     history = meta.setdefault("public_offer_history", {})
     notified_prices = meta.setdefault("notified_offer_prices", {})
-    found = candidates(posts, history)
+    community = candidates([post for post in posts if not post.get("direct_source")], history)
+    native = [deal for item in first_party if
+              (deal := direct_pipeline.to_candidate(item, category_matches,
+                  INTERIOR_DISCOUNT, MIN_DISCOUNT))]
+    found = direct_pipeline.merge_candidates(community, native)
     if CATALOG_ENABLED:
         catalog_records = catalog.collect_records(
             posts, found, category_matches, percent, price_pair,
@@ -1011,7 +1071,15 @@ def run():
         dedupe_key = ("source:" + item["key"]) if source_only else deal["amazon"]
         previous = seen.get(dedupe_key)
         current_headline_price = deal["headline_price"]
-        if not alerts.meaningful_change(
+        if deal.get("direct_offer"):
+            old_price = notified_prices.get(dedupe_key)
+            pct_better = previous is None or deal["discount"] >= int(previous) + 10
+            price_better = (old_price is not None and
+                            current_headline_price <= old_price * .8 and
+                            old_price - current_headline_price >= 5)
+            if not (pct_better or price_better):
+                continue
+        elif not alerts.meaningful_change(
             previous, deal["discount"],
             notified_prices.get(dedupe_key), current_headline_price
         ):
@@ -1019,7 +1087,8 @@ def run():
         # Preserve an upgrade from source-only to direct Amazon URL.
         # For the same direct-link article, don't re-alert on unchanged claims.
         item_key = "product:" + item["key"]
-        if (not source_only and deal["discount"] > 0 and item_key in seen and
+        if (not deal.get("direct_offer") and not source_only and
+                deal["discount"] > 0 and item_key in seen and
                 deal["discount"] < int(seen[item_key]) + 10):
             continue
         pair = deal["pair"]
@@ -1083,7 +1152,12 @@ def run():
                 + f"Первоисточник: {item['link']}\n\n"
                 + "Проверь цену, доставку в FR, продавца, состояние товара и график Keepa."
             )
-        buttons = alerts.deal_buttons(deal["amazon"], item["link"])
+        if deal.get("direct_offer"):
+            message = direct_pipeline.format_direct_alert(deal)
+        buttons = alerts.deal_buttons(deal["amazon"],
+                  None if deal.get("direct_offer") else item["link"])
+        if deal.get("direct_offer") and buttons:
+            buttons["inline_keyboard"][0][0]["url"] = deal["direct_affiliate_url"]
         photo = media.safe_image_url(deal.get("image"))
         # Fetch only the ORIGINAL deal article for OG image, never Google Images
         # or guessed Amazon image/ASIN URLs. Bounded per scan.

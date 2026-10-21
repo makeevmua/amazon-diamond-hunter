@@ -16,8 +16,12 @@ on:
       - 'pricechecks.py'
       - 'observations.py'
       - 'catalog_ui.py'
+      - 'amazon_direct.py'
+      - 'direct_pipeline.py'
+      - 'fast_hunter.py'
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "7,22,37,52 * * * *" # Full discovery every 15m
+    - cron: "2,12,17,27,32,42,47,57 * * * *" # Amazon-only on intervening 5-minute slots
     - cron: "0 19,20 * * *" # 21:00 Paris in summer/winter; bot checks local time
 permissions:
   contents: read
@@ -53,6 +57,7 @@ jobs:
           CATALOG_ENABLED: 'true'
           EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
           PEPPER_GRAPHQL_ENABLED: 'true'
+          DIRECT_AMAZON_ENABLED: 'false' # No credentials in preview.
           # Push preview has no real-price key configured.
           MAX_NOTIFICATIONS: '3'
         run: python3 bot.py
@@ -75,6 +80,15 @@ jobs:
           EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
           PEPPER_GRAPHQL_ENABLED: 'true'
           KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}
+          AMAZON_CREATORS_CLIENT_ID: ${{ secrets.AMAZON_CREATORS_CLIENT_ID }}
+          AMAZON_CREATORS_CLIENT_SECRET: ${{ secrets.AMAZON_CREATORS_CLIENT_SECRET }}
+          AMAZON_PARTNER_TAG_FR: ${{ secrets.AMAZON_PARTNER_TAG_FR }}
+          AMAZON_PARTNER_TAG_DE: ${{ secrets.AMAZON_PARTNER_TAG_DE }}
+          AMAZON_PARTNER_TAG_ES: ${{ secrets.AMAZON_PARTNER_TAG_ES }}
+          AMAZON_PARTNER_TAG_IT: ${{ secrets.AMAZON_PARTNER_TAG_IT }}
+          DIRECT_MAX_QUERIES: '5'
+          DIRECT_WATCH_BATCHES: '2'
+          DIRECT_ONLY_RUN: ${{ github.event.schedule == '2,12,17,27,32,42,47,57 * * * *' && 'true' || 'false' }}
         run: python3 bot.py
       - name: Save seen-items cache
         if: success() && github.event_name != 'push'

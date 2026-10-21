@@ -50,6 +50,7 @@ SOURCE_DOMAINS = {
     "quantospendo.app", "www.quantospendo.app",
     "lesnumeriques.com", "www.lesnumeriques.com",
     "brickset.com", "www.brickset.com", "mydealz.de", "www.mydealz.de",
+    "amazon.fr", "amazon.de", "amazon.es", "amazon.it",
 }
 ALLOWED_AMAZON = {"amazon.fr", "amazon.de", "amazon.es", "amazon.it"}
 
@@ -77,6 +78,9 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
         source = str(post.get("link", ""))[:1400]
         host = _source_host(source)
         if host not in SOURCE_DOMAINS or not fresh_fn(post.get("pubDate")):
+            continue
+        from_amazon = post.get("direct_source") == "Amazon Creators API"
+        if host in ALLOWED_AMAZON and not from_amazon:
             continue
         title = _clean(post.get("title", ""))[:300]
         if not policy.is_allowed(title, post.get("description", "")):
@@ -106,9 +110,15 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
             if isinstance(reported, (int, float)) and not isinstance(reported, bool):
                 if 0 <= reported <= 100000:
                     price = round(reported, 2)
-        price_scope = ("mixed_merchants_unverified" if host in COMPARISON_DOMAINS
+        price_scope = ("amazon_creators_featured_new" if from_amazon else
+                       "mixed_merchants_unverified" if host in COMPARISON_DOMAINS
                        else "unverified_public_offer")
-        direct = candidate.get("amazon") if candidate else None
+        if from_amazon:
+            price = post["direct_current_eur"]
+            # Official Amazon API savingBasis is a list/reference price.
+            # Not independently proved savings, stock or FR checkout value.
+            discount = int(post.get("direct_claimed_percent") or 0)
+        direct = source if from_amazon else (candidate.get("amazon") if candidate else None)
         # A direct link in an editorial PRICE COMPARISON does NOT imply that
         # its cheapest headline offer was on Amazon.
         if not direct and host not in COMPARISON_DOMAINS:
@@ -172,6 +182,11 @@ def save_records(rows, db_path="catalog.sqlite", now=None):
         ).fetchall() if not policy.is_allowed(title)]
         db.executemany('DELETE FROM offers WHERE source_url=?',
                        [(url,) for url in stale_scope])
+        # Amazon Creators advertising prices have very short cache TTL.
+        # Remove even valid direct offers once their price is older than 1h.
+        direct_cutoff = (datetime.fromisoformat(when) - timedelta(minutes=58)).isoformat(timespec="seconds")
+        db.execute("DELETE FROM offers WHERE price_scope='amazon_creators_featured_new' AND last_seen < ?",
+                   (direct_cutoff,))
         # Bound storage by date and count. Fresh publication sightings are not
         # proof of continued stock or the current price.
         cutoff = (datetime.fromisoformat(when) - timedelta(days=60)).isoformat(
@@ -219,7 +234,9 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
         price = (f'{row["advertised_price_eur"]:.2f} €'
                  if row["advertised_price_eur"] is not None else "—")
         claimed = (f'−{row["claimed_discount"]}%' if row["claimed_discount"] else "—")
-        scope = ("Цена из сравнения магазинов (не обязательно Amazon)"
+        scope = ("Amazon Creators API: цена нового предложения при проверке, доставка и корзина не проверены"
+                 if row["price_scope"] == "amazon_creators_featured_new" else
+                 "Цена из сравнения магазинов (не обязательно Amazon)"
                  if row["price_scope"] == "mixed_merchants_unverified"
                  else "Цена из объявления — не проверена на Amazon")
         photo = media.safe_image_url(row["image_url"])
@@ -315,7 +332,7 @@ footer a{color:#e7c681}
 <div class="wrap">
 <section class="hero"><div class="eyebrow">ВИТРИНА НАХОДОК</div>
 <h1>Хорошие вещи.<br>Интересные цены.</h1>
-<p class="lead">Дизайнерский интерьер, LEGO, электроника и необычные предложения — из Франции, Германии, Испании и Италии. Найденная цена <strong>не проверена на Amazon</strong>. Открой карточку и уточни продавца, комплектацию и конечную стоимость доставки.</p>
+<p class="lead">Дизайнерский интерьер, LEGO, электроника и необычные предложения — из Франции, Германии, Испании и Италии. Цены в публикациях <strong>не проверены на Amazon</strong>. Предложения с пометкой «Amazon Creators API» получены из официального каталога, но цена в корзине может отличаться. Открой карточку и уточни продавца, комплектацию и конечную стоимость доставки.</p>
 <div class="stats"><div class="stat"><b>COUNT</b><span>объявлений в базе</span></div>
 <div class="stat"><b id="amazon-count">—</b><span>с прямой ссылкой Amazon</span></div>
 <div class="stat"><b id="priced-count">—</b><span>с заявленной ценой</span></div></div></section>
@@ -330,7 +347,7 @@ footer a{color:#e7c681}
 <div class="grid" id="cards">ROWS</div>
 <div id="noresult">Здесь пока нет предложений. Попробуй другие фильтры.</div>
 <button id="more" hidden type="button">Показать ещё ↓</button>
-<aside class="note"><b>Важно:</b> цифры и проценты на этой странице — заявления из сторонних публикаций, не проверенные текущие цены Amazon. В редакционных статьях может сравниваться несколько магазинов, как в случае Samsung S26+ и Joybuy. Даже если есть ссылка на Amazon, цена статьи может отличаться от выбранной версии товара. Кнопка «Проверить на Amazon» не оформляет покупку.</aside>
+<aside class="note"><b>Важно:</b> проценты из сторонних публикаций не проверены. Если указано «Amazon Creators API», цена получена непосредственно от Amazon во время сканирования, но не подтверждает доставку, конкретного продавца или итоговую корзину. В редакционных статьях может сравниваться несколько магазинов, как в случае Samsung S26+ и Joybuy. Даже если есть ссылка на Amazon, цена статьи может отличаться от выбранной версии товара. Кнопка «Проверить на Amazon» не оформляет покупку.</aside>
 </main></div>
 <footer class="wrap"><span>Diamond Hunter · обновлено LAST_UPDATED · автоматически после сканирований</span><div><a href="finds.csv" download>CSV</a> · <a href="finds.json" download>JSON</a></div></footer>
 <script>
