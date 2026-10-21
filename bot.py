@@ -1348,7 +1348,7 @@ def run():
     save_seen(seen)
     summary = (
         f"💎 Diamond Hunter: проверено {len(posts)} публикаций из "
-        f"{available}/{requested} лент. Кандидатов по порогам 25% интерьер / 50% остальные: {len(found)}, "
+        f"{available}/{requested} лент. Кандидатов по порогам 25% все разрешённые категории: {len(found)}, "
         f"новых уведомлений: {sent}."
     )
     print(summary)
