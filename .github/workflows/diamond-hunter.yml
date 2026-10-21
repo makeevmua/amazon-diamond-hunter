@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Restore seen-items cache
-        if: github.event_name != 'push'
+        # Preserve accumulated offers on push dry-run storefront rebuilds.
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -43,6 +43,7 @@ jobs:
         env:
           DRY_RUN: 'true'
           CATALOG_ENABLED: 'true'
+          EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
           MAX_NOTIFICATIONS: '3'
         run: python3 bot.py
       - name: Send Telegram connection test (manual runs only)
@@ -61,6 +62,7 @@ jobs:
           MAX_NOTIFICATIONS: '5'
           DRY_RUN: 'false'
           CATALOG_ENABLED: 'true'
+          EXTRA_RSS_FEEDS: ${{ vars.EXTRA_RSS_FEEDS }}
         run: python3 bot.py
       - name: Save seen-items cache
         if: success() && github.event_name != 'push'
