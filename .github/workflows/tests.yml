@@ -40,6 +40,8 @@ jobs:
                       if parser.links:
                           detail, teaser=parser.links[0]
                           try:
+                              print("JOYBUY EXAMPLE URL",detail[:180])
+                              print("JOYBUY TEASER",teaser[:380])
                               html=retailer_direct._fetch_page(detail,shop)
                               print("JOYBUY PDP: bytes",len(html),"JSON-LD", "application/ld+json" in html)
                               rec=retailer_direct._retailer_product(detail,html,shop,__import__('datetime').datetime.now(__import__('datetime').timezone.utc),teaser)
