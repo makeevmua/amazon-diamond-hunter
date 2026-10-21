@@ -30,6 +30,14 @@ jobs:
                   parser.feed(page)
                   print(f"RETAIL CONNECTIVITY: {shop}: HTML retrieved, {len(parser.links)} direct product links")
                   if shop=="Cdiscount":
+                      try:
+                          alt=retailer_direct.PAGES["Cdiscount"][1]
+                          alt_html=retailer_direct._fetch_page(alt,shop)
+                          alt_parser=retailer_direct.ProductLinks(alt)
+                          alt_parser.feed(alt_html)
+                          print("CD SEARCH PAGE:",len(alt_parser.links),"direct product links")
+                      except Exception as err:
+                          print("CD SEARCH PAGE: unavailable",type(err).__name__)
                       import re
                       print("CD DIAGNOSTIC: candidate f- strings", len(re.findall(r"f-[a-zA-Z0-9-]+\\.html",page)))
                       print("CD DIAGNOSTIC: hrefs",len(re.findall(r"href=",page,re.I)))
