@@ -53,7 +53,7 @@ TABLETOP_GAMES = re.compile(
     r"(?i)\b(?:jeux?\s+de\s+soci[ée]t[ée]|jeux?\s+de\s+plateau|"
     r"board\s*games?|tabletop\s+games?|"
     r"juegos?\s+de\s+mesa|juegos?\s+de\s+tablero|"
-    r"giochi?\s+da\s+tavolo|gesellschaftsspiele?|brettspiele?|"
+    r"gioc(?:o|hi)\s+da\s+tavolo|gesellschaftsspiele?|brettspiele?|"
     r"kartenspiele?|card\s+games?|juegos?\s+de\s+cartas|"
     r"jeux?\s+de\s+cartes|puzzles?)\b"
 )
