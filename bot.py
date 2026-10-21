@@ -41,13 +41,15 @@ FEEDS = [
     "https://www.dealabs.com/rss/groupe/animaux",
     "https://www.dealabs.com/rss/groupe/culture-divertissement",
     "https://www.chollometro.com/rss",
+    "https://www.mydealz.de/rss/new",
     "https://quantospendo.app/offerte/feed.xml",
     "https://www.lesnumeriques.com/rss-gooddeals.xml",
     "https://www.lesnumeriques.com/informatique/rss.xml",
     "https://www.lesnumeriques.com/gaming/rss.xml",
     "https://www.lesnumeriques.com/loisirs/rss.xml",
     "https://www.lesnumeriques.com/electromenager/rss.xml",
-    # Only French, Spanish and Italian Amazon-specific bargain feeds.
+    # Direct Amazon bargain feeds for Germany, France, Spain and Italy.
+    "https://brickset.com/feed/amazon/de",
     "https://brickset.com/feed/amazon/fr",
     "https://brickset.com/feed/amazon/es",
     "https://brickset.com/feed/amazon/it",
@@ -63,7 +65,7 @@ try:
     PREF = json.loads(PREFERENCES_FILE.read_text(encoding="utf-8"))
 except (ValueError, OSError):
     PREF = {}
-MARKETS = tuple(PREF.get("markets", ["amazon.fr", "amazon.es", "amazon.it"]))
+MARKETS = tuple(PREF.get("markets", ["amazon.fr", "amazon.de", "amazon.es", "amazon.it"]))
 LOCAL_TZ = ZoneInfo("Europe/Paris")
 REPORT_HOUR = int(PREF.get("notifications", {}).get("daily_report", {}).get("local_time", "21:00").split(":")[0]) if PREF.get("notifications", {}).get("daily_report", {}).get("local_time") else 21
 PREFERRED_BRANDS = re.compile(
@@ -88,7 +90,8 @@ HOME_RE = re.compile(
     r"balai\s+vapeur|sèche[- ]linge|air\s+conditionné|"
     r"aspirapolvere|friggitrice|lavatrice|lavastoviglie|"
     r"macchina\s+del\s+caffè|robot\s+da\s+cucina|cafetera|"
-    r"freidora|lavadora|lavavajillas", re.I
+    r"freidora|lavadora|lavavajillas|"
+    r"staubsauger|kaffeemaschine|waschmaschine|kühlschrank", re.I
 )
 # New interest filters are intentionally multilingual (FR/ES/IT/EN).
 # They classify *titles and descriptions*, not pictures or Amazon catalog data.
@@ -113,7 +116,9 @@ INTERIOR_RE = re.compile(
     r"coussins?|cojines|cojín|cuscini|cuscino|pillows?|"
     r"rideaux?|cortinas?|tende|tenda|curtains?|"
     r"plaid|textile|organiseur|organizer|"
-    r"burger chair|burger table|food.shaped)\b", re.I,
+    r"burger chair|burger table|food.shaped|"
+    r"lampe|leuchte|stehlampe|tischlampe|stuhl|sessel|möbel|"
+    r"tisch|teppich|spiegel|vase|sofa|regal|dekoration)\b", re.I,
 )
 INTERIOR_STYLE_RE = re.compile(
     r"bauhaus|scandinave|scandinavian|scandinavo|escandinavo|"
@@ -191,7 +196,9 @@ CATEGORY_RE = re.compile(
     r"consola|videojuegos|teléfono|telefono|portátil|portatil|"
     r"scheda\s+video|scheda\s+grafica|cellulare|cuffie|"
     r"videogiochi|smartwatch|televisore|tastiera|"
-    r"carte mère|alimentation pc|console de jeu", re.I,
+    r"carte mère|alimentation pc|console de jeu|"
+    r"grafikkarte|prozessor|arbeitsspeicher|bildschirm|festplatte|"
+    r"kopfhörer|spielkonsole|controller|gaming laptop", re.I,
 )
 EXCLUDE_RE = re.compile(
     r"occasion|seconde main|reconditionn|refurbished|\bused\b|"
@@ -220,11 +227,11 @@ PAIR_RE = re.compile(
 URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.I)
 ASIN_RE = re.compile(r"/(?:dp|gp/product|gp/aw/d|gp/offer-listing|exec/obidos/ASIN)/([A-Z0-9]{10})(?:[/?#]|$)", re.I)
 AMAZON_EMBEDDED_RE = re.compile(
-    r"https?://(?:www\.|smile\.)?amazon\.(?:fr|es|it)/[^\s\"'<>]+", re.I
+    r"https?://(?:www\.|smile\.)?amazon\.(?:fr|de|es|it)/[^\s\"'<>]+", re.I
 )
 SHORTLINK_HOSTS = {"amzn.eu", "amzn.to", "a.co"}
 BRICKSET_ROUNDUP_RE = re.compile(
-    r"^(?:discounts?|deals?|offers?|promotions?)\s+(?:at|on|from)\s+amazon\.(?:fr|es|it)\b",
+    r"^(?:discounts?|deals?|offers?|promotions?)\s+(?:at|on|from)\s+amazon\.(?:fr|de|es|it)\b",
     re.I,
 )
 FASHION_TITLE_RE = re.compile(
@@ -511,6 +518,7 @@ def dealabs_link(link):
         return p.scheme == "https" and (p.hostname or "").lower() in (
             "www.dealabs.com", "dealabs.com",
             "www.chollometro.com", "chollometro.com",
+            "www.mydealz.de", "mydealz.de",
             "quantospendo.app", "www.quantospendo.app",
             "lesnumeriques.com", "www.lesnumeriques.com",
             "brickset.com", "www.brickset.com"
@@ -620,7 +628,7 @@ def telegram_send(message, buttons=None, photo_url=None):
 # by commas, semicolons or newlines. URLs are restricted to the known FR/ES/IT
 # publishers; the scanner never accepts arbitrary URLs or UK/US sources.
 ALLOWED_FEED_DOMAINS = {
-    "dealabs.com", "chollometro.com", "quantospendo.app",
+    "dealabs.com", "chollometro.com", "mydealz.de", "quantospendo.app",
     "lesnumeriques.com", "brickset.com",
 }
 
@@ -1053,7 +1061,7 @@ def run():
         else:
             shipping = (
             "Доставка во Францию: НЕ ПРОВЕРЕНА; уточни доступность и итоговую цену в корзине.\n"
-            if market in ("amazon.es", "amazon.it") else
+            if market in ("amazon.de", "amazon.es", "amazon.it") else
             "Доставка и наличие: НЕ ПРОВЕРЕНЫ; уточни цену и условия.\n"
             )
             message = (
