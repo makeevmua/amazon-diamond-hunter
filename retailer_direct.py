@@ -354,6 +354,13 @@ def discover(state, env=None, now=None):
         per_shop = 2
     if not per_shop:
         return []
+    # Joybuy's own lightning-offer page contains many short-lived tiles.
+    # Six PDPs per scan stays courteous and improves coverage over two.
+    try:
+        joybuy_checks = max(1, min(6, int(
+            env.get("RETAIL_JOYBUY_PRODUCT_CHECKS_PER_SCAN", "6"))))
+    except (TypeError, ValueError):
+        joybuy_checks = 6
     out = {}
     metrics = state.setdefault("retailer_direct_health", {})
     try:
@@ -424,11 +431,14 @@ def discover(state, env=None, now=None):
             print(f"RETAIL DIRECT: {shop} listing has no direct product URLs.")
             continue
         # Deterministic rotation across candidate tiles without extra listing calls.
+        # Use a separate bounded Joybuy quota so Cdiscount's stricter budget
+        # is not increased, particularly when its unlocker is configured.
+        shop_checks = joybuy_checks if shop == "Joybuy" else per_shop
         index_key = "retailer_" + shop.lower() + "_item_cursor"
         start = int(state.get(index_key, 0))
         checked = 0
         for k in range(len(links)):
-            if checked >= per_shop:
+            if checked >= shop_checks:
                 break
             dest, text = links[(start + k) % len(links)]
             if retail_scope.shop(dest) != shop:
