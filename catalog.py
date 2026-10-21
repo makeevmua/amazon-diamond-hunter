@@ -80,7 +80,8 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
         if host not in SOURCE_DOMAINS or not fresh_fn(post.get("pubDate")):
             continue
         from_amazon = post.get("direct_source") == "Amazon Creators API"
-        if host in ALLOWED_AMAZON and not from_amazon:
+        from_keepa = post.get("direct_source") == "Keepa Deals"
+        if host in ALLOWED_AMAZON and not (from_amazon or from_keepa):
             continue
         title = _clean(post.get("title", ""))[:300]
         if not policy.is_allowed(title, post.get("description", "")):
@@ -111,14 +112,15 @@ def collect_records(posts, candidates, category_fn, percent_fn, price_pair_fn,
                 if 0 <= reported <= 100000:
                     price = round(reported, 2)
         price_scope = ("amazon_creators_featured_new" if from_amazon else
+                       "keepa_observed_new" if from_keepa else
                        "mixed_merchants_unverified" if host in COMPARISON_DOMAINS
                        else "unverified_public_offer")
-        if from_amazon:
+        if from_amazon or from_keepa:
             price = post["direct_current_eur"]
             # Official Amazon API savingBasis is a list/reference price.
             # Not independently proved savings, stock or FR checkout value.
-            discount = int(post.get("direct_claimed_percent") or 0)
-        direct = source if from_amazon else (candidate.get("amazon") if candidate else None)
+            discount = int(post.get("keepa_drop90_percent") or 0) if from_keepa else int(post.get("direct_claimed_percent") or 0)
+        direct = source if (from_amazon or from_keepa) else (candidate.get("amazon") if candidate else None)
         # A direct link in an editorial PRICE COMPARISON does NOT imply that
         # its cheapest headline offer was on Amazon.
         if not direct and host not in COMPARISON_DOMAINS:
@@ -187,6 +189,9 @@ def save_records(rows, db_path="catalog.sqlite", now=None):
         direct_cutoff = (datetime.fromisoformat(when) - timedelta(minutes=58)).isoformat(timespec="seconds")
         db.execute("DELETE FROM offers WHERE price_scope='amazon_creators_featured_new' AND last_seen < ?",
                    (direct_cutoff,))
+        keepa_cutoff = (datetime.fromisoformat(when) - timedelta(minutes=89)).isoformat(timespec="seconds")
+        db.execute("DELETE FROM offers WHERE price_scope='keepa_observed_new' AND last_seen < ?",
+                   (keepa_cutoff,))
         # Bound storage by date and count. Fresh publication sightings are not
         # proof of continued stock or the current price.
         cutoff = (datetime.fromisoformat(when) - timedelta(days=60)).isoformat(
@@ -236,6 +241,8 @@ def export(db_path="catalog.sqlite", directory="catalog_export"):
         claimed = (f'−{row["claimed_discount"]}%' if row["claimed_discount"] else "—")
         scope = ("Amazon Creators API: цена нового предложения при проверке, доставка и корзина не проверены"
                  if row["price_scope"] == "amazon_creators_featured_new" else
+                 "Keepa: наблюдавшаяся цена Amazon, не проверенная в корзине; скидка против 90-дневной средней"
+                 if row["price_scope"] == "keepa_observed_new" else
                  "Цена из сравнения магазинов (не обязательно Amazon)"
                  if row["price_scope"] == "mixed_merchants_unverified"
                  else "Цена из объявления — не проверена на Amazon")
