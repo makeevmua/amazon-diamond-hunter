@@ -16,3 +16,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run Python unit tests
         run: python3 -m unittest discover -s tests -v
+      - name: Live retailer storefront connectivity (2 public pages, no secrets)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import retailer_direct
+          for shop in ("Cdiscount", "Joybuy"):
+              url=retailer_direct.PAGES[shop][0]
+              try:
+                  page=retailer_direct._fetch_page(url,shop)
+                  parser=retailer_direct.ProductLinks(url)
+                  parser.feed(page)
+                  print(f"RETAIL CONNECTIVITY: {shop}: HTML retrieved, {len(parser.links)} direct product links")
+              except Exception as error:
+                  print(f"RETAIL CONNECTIVITY: {shop}: unavailable ({type(error).__name__})")
+          PY
