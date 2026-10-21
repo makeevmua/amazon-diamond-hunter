@@ -24,6 +24,7 @@ import policy
 import pepper
 import observations
 import pricechecks
+import catalog_ui
 
 FEEDS = [
     "https://www.dealabs.com/rss/hot.xml",
@@ -938,6 +939,8 @@ def run():
             meta["keepa_check_day"] = today_utc
             print(f"KEEPA: {count} fresh source-labelled ASIN observations; checkout price is unverified.")
         exported = catalog.export(CATALOG_PATH, CATALOG_EXPORT_DIR)
+        enhanced = catalog_ui.enhance(CATALOG_EXPORT_DIR, CATALOG_PATH)
+        print(f"STOREFRONT: {enhanced['cards']} cards, {enhanced['keepa']} source-labelled Keepa quotes.")
         print(
             f"FINDINGS DATABASE: {saved_count} unique source publications; "
             f"{len(catalog_records)} relevant listings in this scan, "
