@@ -74,6 +74,45 @@ class BrightSearchTests(unittest.TestCase):
         self.assertEqual(state["brightdata_search_usage"]["count"],1)
         self.assertEqual(state["brightdata_search_cursor"],1)
 
+    def test_async_search_queues_one_job_then_retrieves_without_extra_charge(self):
+        sample=example()
+        state={}
+        env={"BRIGHTDATA_API_TOKEN":"fake-only-in-mocks",
+             "BRIGHTDATA_SEARCH_PER_DAY":"1"}
+        with patch.object(brightdata_search,"_read_search",
+                          return_value={"snapshot_id":"s_abc123456789"}) as trigger, \
+             patch.object(brightdata_search,"_poll_snapshot",
+                          side_effect=[None,[sample]]) as poll:
+            one=brightdata_search.discover(state,env=env,now=NOW)
+            two=brightdata_search.discover(state,env=env,now=NOW)
+            three=brightdata_search.discover(state,env=env,now=NOW)
+        self.assertEqual((len(one),len(two),len(three)),(0,0,1))
+        self.assertEqual(trigger.call_count,1)
+        self.assertEqual(poll.call_count,2)
+        self.assertNotIn("brightdata_search_pending",state)
+        self.assertEqual(state["brightdata_search_usage"]["count"],1)
+        self.assertEqual(three[0]["direct_current_eur"],49.99)
+
+    def test_brightdata_trigger_uses_top_level_input_array(self):
+        import json
+        class Response:
+            status=200
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self,n=1000000):
+                return b'{"snapshot_id":"s_abc123456789"}'
+        with patch.object(brightdata_search,"urlopen",
+                          return_value=Response()) as get:
+            result=brightdata_search._read_search("fake-token","amazon.fr","SSD NVMe")
+        req=get.call_args.args[0]
+        self.assertIn("/datasets/v3/trigger?",req.full_url)
+        self.assertEqual(req.get_method(),"POST")
+        payload=json.loads(req.data)
+        self.assertIsInstance(payload,list)
+        self.assertEqual(payload[0]["keyword"],"SSD NVMe")
+        self.assertEqual(payload[0]["url"],"https://www.amazon.fr")
+        self.assertEqual(result["snapshot_id"],"s_abc123456789")
+
     def test_no_key_worker_can_use_search_provider_without_keepa(self):
         record=brightdata_search.normalize(example(),NOW)
         calls=[]
