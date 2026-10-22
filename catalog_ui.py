@@ -67,6 +67,10 @@ def enhance(directory, db_path, source_health=None):
         cdiscount_count = int(source_health.get("cdiscount_direct", 0))
         joybuy_count = int(source_health.get("joybuy_direct", 0))
         watch_asins = int(source_health.get("watch_asins", 0))
+        amazon_api_ready = bool(source_health.get("amazon_creators_configured", False))
+        amazon_search_ready = bool(source_health.get("amazon_brightdata_configured", False))
+        amazon_search_pending = bool(source_health.get("amazon_brightdata_pending", False))
+        amazon_search_error = str(source_health.get("amazon_brightdata_error") or "")[:100]
         retailer_health = source_health.get("retailer_health") or {}
         cstatus = (retailer_health.get("Cdiscount") or {}).get("status", "unknown")
         jstatus = (retailer_health.get("Joybuy") or {}).get("status", "unknown")
@@ -82,6 +86,23 @@ def enhance(directory, db_path, source_health=None):
             if status == "unavailable":
                 return f"{shop}: источник недоступен"
             return f"{shop}: ещё не проверен"
+        amazon_status = (
+            "Amazon Creators: подключён" if amazon_api_ready
+            else "Amazon Creators: НЕТ ДОСТУПА"
+        )
+        amazon_status += (
+            " · Bright Data Amazon: ожидает снимок" if amazon_search_pending
+            else " · Bright Data Amazon: ограниченный поиск" if amazon_search_ready
+            else " · Bright Data Amazon: отключён"
+        )
+        if amazon_search_error:
+            amazon_status += " · Последняя ошибка: " + html.escape(amazon_search_error)
+        site_status = '<p class="feed-health">' + html.escape(
+            amazon_status.split(" · Последняя ошибка: ")[0]
+        )
+        if amazon_search_error:
+            site_status += " · Последняя ошибка: " + html.escape(amazon_search_error)
+        site_status += " · успешный запуск GitHub не подтверждает мониторинг Amazon</p>"
         detail = ("<p class=\"feed-health\">Статус: " +
                   html.escape(readable(cstatus, "Cdiscount")) + " · " +
                   html.escape(readable(jstatus, "Joybuy")) +
@@ -96,7 +117,7 @@ def enhance(directory, db_path, source_health=None):
                    str(watch_asins) + ' · RSS: ' + str(rss_ok) + '/' +
                    str(rss_total) + ' · Pepper: ' + str(pepper_received) +
                    ' · итог корзины/доставка не проверены</p>')
-        site = _replace_once(site, '<div class="stats">', summary + detail + '<div class="stats">')
+        site = _replace_once(site, '<div class="stats">', site_status + summary + detail + '<div class="stats">')
 
     articles = re.findall(r'<article class="card"[^>]*>.*?</article>', site, flags=re.S)
     if len(articles) != len(cards):
