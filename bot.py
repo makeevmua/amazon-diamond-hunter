@@ -1008,6 +1008,18 @@ def run():
         posts, available, requested = [], 0, len(configured_feeds())
         SCAN_STATS.update({"rss_total": requested, "rss_ok": 0, "rss_unavailable": []})
     SCAN_STATS["amazon_direct"] = len(first_party)
+    # Distinguish a running workflow from actual Amazon coverage:
+    # no approved API keys means Amazon is NOT actively being scanned.
+    SCAN_STATS["amazon_creators_configured"] = bool(
+        os.getenv("DIRECT_AMAZON_ENABLED", "true").lower() == "true"
+        and amazon_direct.enabled())
+    SCAN_STATS["amazon_brightdata_configured"] = bool(
+        os.getenv("BRIGHTDATA_API_TOKEN")
+        and os.getenv("BRIGHTDATA_SEARCH_ENABLED", "true").lower() == "true")
+    SCAN_STATS["amazon_brightdata_pending"] = bool(
+        meta.get("brightdata_search_pending"))
+    SCAN_STATS["amazon_brightdata_error"] = str(
+        meta.get("brightdata_search_last_error") or "")[:100]
     SCAN_STATS["keepa_deals"] = len(keepa_offers)
     SCAN_STATS["brightdata_search"] = len(search_offers)
     SCAN_STATS["cdiscount_direct"] = sum(1 for p in retailer_offers if p["direct_source"] == "Cdiscount Direct")
@@ -1285,7 +1297,7 @@ def run():
     if len(notified_prices) > 3000:
         meta["notified_offer_prices"] = dict(list(notified_prices.items())[-2000:])
     print(
-        f"Alert types this run: {sent - sent_source_only} direct Amazon; "
+        f"Alert types this run: {sent - sent_source_only} direct retailers; "
         f"{sent_source_only} editorial source-only; {sent_urgent} suspected errors; "
         f"{sent_watch} price watches; {sent_photos} photo delivery attempts."
     )
@@ -1328,10 +1340,15 @@ def run():
             f"Запусков: {counts['scans']}\n"
             f"Проверок публикаций: {counts['posts_checked']} "
             "(включая повторные между сканированиями)\n"
-            f"Кандидатов: {counts['candidates']} (интерьер от 25%, остальные от 50%) "
+            f"Кандидатов: {counts['candidates']} (все разрешённые категории от 25%) "
             "(суммарно по проверкам)\n"
             f"Отправлено уведомлений: {counts['alerts_sent']}\n"
             f"Магазины: {markets}\n"
+            + ("Amazon Creators: активен\n" if SCAN_STATS["amazon_creators_configured"]
+               else "Amazon Creators: НЕТ ДОСТУПА (ключи не настроены)\n")
+            + ("Amazon Bright Data: подключён (ограниченный поиск)\n"
+               if SCAN_STATS["amazon_brightdata_configured"]
+               else "Amazon Bright Data: отключён\n")
             + (f"База находок (CSV, JSON, HTML): "
                f"https://github.com/makeevmua/amazon-diamond-hunter/actions/runs/"
                f"{os.getenv('GITHUB_RUN_ID')} (раздел Artifacts)\n"
