@@ -434,9 +434,25 @@ def discover(state, env=None, now=None):
                              "offers": 0, "checked_at": now.isoformat(timespec="seconds")}
             print(f"RETAIL DIRECT: {shop} listing has no direct product URLs.")
             continue
-        # Deterministic rotation across candidate tiles without extra listing calls.
-        # Use a separate bounded Joybuy quota so Cdiscount's stricter budget
-        # is not increased, particularly when its unlocker is configured.
+        # Evaluate every *first-party* flash-sale tile with one unambiguous
+        # discounted price / RRP. This is listing-only, so clearly tagged as
+        # NOT confirmed at the product page. The previous scan silently lost
+        # most offers: 6 PDP requests out of ~20 visible product links.
+        listing_quoted = 0
+        if shop == "Joybuy":
+            for candidate_url, teaser in links[:80]:
+                if retail_scope.shop(candidate_url) != "Joybuy":
+                    continue
+                candidate = _listing_fallback(
+                    candidate_url, teaser, "Joybuy", now)
+                if candidate:
+                    out[candidate["link"]] = candidate
+                    listing_quoted += 1
+            print(f"RETAIL DIRECT: Joybuy {listing_quoted} eligible "
+                  f"first-party listing quotes from {len(links)} links; "
+                  "prices unverified on PDP")
+        # PDP reads still upgrade up to the normal cap when a valid
+        # structured price is available. No additional paid API calls.
         shop_checks = joybuy_checks if shop == "Joybuy" else per_shop
         index_key = "retailer_" + shop.lower() + "_item_cursor"
         start = int(state.get(index_key, 0))
@@ -468,9 +484,16 @@ def discover(state, env=None, now=None):
                         item = _retailer_product(
                             dest, details, shop, now, teaser=text)
             if item:
-                out[item["link"]] = item
+                old = out.get(item["link"])
+                # Never replace a successfully parsed product-page price with
+                # a weaker listing-only fallback for the same product.
+                if not old or (
+                    item.get("direct_offer_type") == "RETAILER_PAGE_RRP"):
+                    out[item["link"]] = item
         state[index_key] = start + max(1, checked)
         metrics[shop] = {"status": "scanned", "cards_on_listing": len(links),
+                         "listing_quotes": listing_quoted,
+                         "product_pages_checked": checked,
                          "offers": sum(1 for x in out.values() if
                                        x["direct_source"].startswith(shop)),
                          "checked_at": now.isoformat(timespec="seconds")}
