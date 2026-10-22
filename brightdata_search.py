@@ -199,6 +199,10 @@ def discover(state, env=None, now=None):
                 return []
             rows = _poll_snapshot(key, ident)
         except (HTTPError, URLError, ValueError, OSError, TimeoutError) as error:
+            state["brightdata_search_last_error"] = (
+                "snapshot HTTP " + str(error.code)
+                if isinstance(error, HTTPError) else
+                "snapshot " + type(error).__name__)
             if isinstance(error, HTTPError):
                 print(f"BRIGHT SEARCH: snapshot HTTP {error.code}, no product data")
             else:
@@ -211,6 +215,7 @@ def discover(state, env=None, now=None):
             print("BRIGHT SEARCH: snapshot still running, checking next scan")
             return []
         state.pop("brightdata_search_pending", None)
+        state.pop("brightdata_search_last_error", None)
         products = _normalized(rows, now)
         print(f"BRIGHT SEARCH: snapshot ready; {len(products)} eligible "
               f"Amazon products out of {len(rows)} records")
@@ -241,12 +246,16 @@ def discover(state, env=None, now=None):
     try:
         result = _read_search(key, market, phrase)
     except (HTTPError, URLError, ValueError, OSError, TimeoutError) as error:
+        state["brightdata_search_last_error"] = (
+            f"{market} HTTP {error.code}" if isinstance(error, HTTPError)
+            else f"{market} {type(error).__name__}")
         if isinstance(error, HTTPError):
             print(f"BRIGHT SEARCH: {market} HTTP {error.code}; check dataset permission/quota")
         else:
             print(f"BRIGHT SEARCH: {market} {type(error).__name__}: "
                   f"{str(error)[:180]}; request not confirmed")
         return []
+    state.pop("brightdata_search_last_error", None)
     if isinstance(result, dict) and result.get("snapshot_id"):
         state["brightdata_search_pending"] = {
             "id": result["snapshot_id"], "market": market, "query": phrase,
