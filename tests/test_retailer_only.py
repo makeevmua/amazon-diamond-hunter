@@ -93,6 +93,22 @@ class RetailerOnlyTests(unittest.TestCase):
             with self.subTest(url=url):
                 self.assertIsNone(retail_scope.shop(url))
 
+    def test_approved_headphones_and_funko_under_25_percent_rule(self):
+        import direct_pipeline
+        for name in (
+            "Écouteurs Bluetooth 5.4 sport avec crochets anti-chute",
+            "Écouteurs Bluetooth sport ENC 4 micros",
+            "Funko Pop Rides Max Verstappen with RB20",
+        ):
+            with self.subTest(name=name):
+                item = native(name, "https://amazon.fr/dp/B0DGB8L5XY")
+                item["direct_claimed_percent"] = 25
+                self.assertIsNotNone(
+                    direct_pipeline.to_candidate(item,bot.category_matches))
+                item["direct_claimed_percent"] = 24
+                self.assertIsNone(
+                    direct_pipeline.to_candidate(item,bot.category_matches))
+
     def test_direct_source_required_for_retail_products(self):
         self.assertTrue(retail_scope.direct_post(native("Samsung SSD 990 PRO")))
         fake=native("SSD Samsung 990", "https://www.dealabs.com/bons-plans/ssd")
