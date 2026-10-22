@@ -299,11 +299,13 @@ class MerchantTests(unittest.TestCase):
                 "RETAIL_PRODUCT_CHECKS_PER_SHOP":"2",
                 "RETAIL_JOYBUY_PRODUCT_CHECKS_PER_SCAN":"6",
             },now=NOW)
-        self.assertEqual(len(results),6)
+        # Nine first-party tiles are valid without nine PDP requests.
+        self.assertEqual(len(results),9)
         self.assertEqual(len([c for c in calls if c[1]=="Joybuy" and
                               c[0] in products]),6)
         self.assertEqual(state["retailer_joybuy_item_cursor"],6)
-        self.assertEqual(state["retailer_direct_health"]["Joybuy"]["offers"],6)
+        self.assertEqual(state["retailer_direct_health"]["Joybuy"]["offers"],9)
+        self.assertEqual(state["retailer_direct_health"]["Joybuy"]["listing_quotes"],9)
 
     def test_joybuy_scans_flash_offers_not_unproductive_homepage(self):
         self.assertEqual(len(retailer_direct.PAGES["Joybuy"]),1)
