@@ -18,6 +18,7 @@ import brightdata_verify
 
 DATASET_ID = "gd_lwdb4vjm1ehb499uxs"
 API = "https://api.brightdata.com/datasets/v3/scrape"
+SNAPSHOT_ID = re.compile(r"(?:s|sd)_[A-Za-z0-9_]{8,80}\Z")
 ASIN_PATH = re.compile(r"/(?:dp|gp/product)/([A-Z0-9]{10})(?:/|$)", re.I)
 MARKETS = ("amazon.fr", "amazon.de", "amazon.es", "amazon.it")
 QUERIES = [
@@ -128,7 +129,7 @@ def _read_search(key, market, phrase, timeout=18):
         "uncompressed_webhook": "true"
     })
     payload = [{"keyword":phrase, "url":"https://www."+market,
-                "pages_to_search":1}]
+                "pages_to_search":"1"}]
     req = Request(url, data=json.dumps(payload).encode("utf-8"),
                   headers={"Authorization":"Bearer "+key,
                            "Content-Type":"application/json"}, method="POST")
@@ -136,15 +137,16 @@ def _read_search(key, market, phrase, timeout=18):
         response = json.loads(res.read(1_000_000))
     if isinstance(response, dict):
         identifier = response.get("snapshot_id")
-        if isinstance(identifier, str) and re.fullmatch(r"s_[A-Za-z0-9_]{8,80}", identifier):
+        if isinstance(identifier, str) and SNAPSHOT_ID.fullmatch(identifier):
             return {"snapshot_id": identifier}
-    # Never pretend a queued collection is a fresh search hit.
-    raise ValueError("Bright Data trigger response lacks valid snapshot_id")
+    # Do not echo provider payload (may include sensitive account metadata).
+    fields = ",".join(sorted(str(k)[:40] for k in response)[:8]) if isinstance(response, dict) else type(response).__name__
+    raise ValueError(f"Bright Data trigger response lacks valid snapshot_id (fields: {fields})")
 
 
 def _poll_snapshot(key, identifier, timeout=12):
     """Download only ready results; never initiate another billable collection."""
-    if not re.fullmatch(r"s_[A-Za-z0-9_]{8,80}", str(identifier)):
+    if not SNAPSHOT_ID.fullmatch(str(identifier)):
         raise ValueError("Malformed snapshot ID")
     headers = {"Authorization": "Bearer "+key, "Accept":"application/json"}
     progress_url = "https://api.brightdata.com/datasets/v3/progress/"+identifier
@@ -242,7 +244,8 @@ def discover(state, env=None, now=None):
         if isinstance(error, HTTPError):
             print(f"BRIGHT SEARCH: {market} HTTP {error.code}; check dataset permission/quota")
         else:
-            print(f"BRIGHT SEARCH: {market} {type(error).__name__}; request not confirmed")
+            print(f"BRIGHT SEARCH: {market} {type(error).__name__}: "
+                  f"{str(error)[:180]}; request not confirmed")
         return []
     if isinstance(result, dict) and result.get("snapshot_id"):
         state["brightdata_search_pending"] = {
