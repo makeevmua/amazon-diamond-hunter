@@ -113,6 +113,62 @@ class BrightSearchTests(unittest.TestCase):
         self.assertEqual(payload[0]["url"],"https://www.amazon.fr")
         self.assertEqual(result["snapshot_id"],"s_abc123456789")
 
+    def test_brightdata_accepts_both_provider_snapshot_id_prefixes(self):
+        import json
+        class FakeResponse:
+            def __init__(self, raw):
+                self.raw = raw
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def read(self, _size=None):
+                return json.dumps(self.raw).encode("utf-8")
+        for ident in ("s_abc123456789", "sd_muars9x1e0ejmq4cx"):
+            with self.subTest(identifier=ident), patch.object(
+                brightdata_search, "urlopen",
+                return_value=FakeResponse({"snapshot_id":ident})) as network:
+                result=brightdata_search._read_search("mock","amazon.fr","LEGO")
+                self.assertEqual(result["snapshot_id"],ident)
+                self.assertEqual(json.loads(network.call_args.args[0].data)[0]
+                                 ["pages_to_search"],"1")
+            with patch.object(brightdata_search, "urlopen",
+                              side_effect=[
+                                  FakeResponse({"status":"ready"}),
+                                  FakeResponse([])
+                              ]) as network:
+                self.assertEqual(brightdata_search._poll_snapshot("mock",ident),[])
+                self.assertIn(ident,network.call_args_list[0].args[0].full_url)
+        for invalid in ("s_abc?invalid","http://example","anything"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    brightdata_search._poll_snapshot("mock",invalid)
+
+    def test_brightdata_invalid_response_explains_safe_shape_not_token(self):
+        import json
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def read(self, _size=None):
+                return json.dumps({"error_code":"NO_ACCESS", "secret":"not-a-real-key"}).encode("utf-8")
+        with patch.object(brightdata_search, "urlopen",return_value=FakeResponse()):
+            with self.assertRaisesRegex(ValueError,"error_code"):
+                brightdata_search._read_search("mock","amazon.fr","LEGO")
+
+    def test_brightdata_failure_status_is_explicit_but_quota_remains_one(self):
+        state={}
+        env={"BRIGHTDATA_API_TOKEN":"fake-token",
+             "BRIGHTDATA_SEARCH_PER_DAY":"1"}
+        with patch.object(brightdata_search,"_read_search",
+                          side_effect=ValueError("Provider no access")) as get:
+            self.assertEqual(brightdata_search.discover(state,env=env,now=NOW),[])
+            self.assertEqual(brightdata_search.discover(state,env=env,now=NOW),[])
+        get.assert_called_once()
+        self.assertIn("ValueError",state["brightdata_search_last_error"])
+        self.assertEqual(state["brightdata_search_usage"]["today"],1)
+
     def test_no_key_worker_can_use_search_provider_without_keepa(self):
         record=brightdata_search.normalize(example(),NOW)
         calls=[]

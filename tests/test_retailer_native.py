@@ -299,11 +299,13 @@ class MerchantTests(unittest.TestCase):
                 "RETAIL_PRODUCT_CHECKS_PER_SHOP":"2",
                 "RETAIL_JOYBUY_PRODUCT_CHECKS_PER_SCAN":"6",
             },now=NOW)
-        self.assertEqual(len(results),6)
+        # Nine first-party tiles are valid without nine PDP requests.
+        self.assertEqual(len(results),9)
         self.assertEqual(len([c for c in calls if c[1]=="Joybuy" and
                               c[0] in products]),6)
         self.assertEqual(state["retailer_joybuy_item_cursor"],6)
-        self.assertEqual(state["retailer_direct_health"]["Joybuy"]["offers"],6)
+        self.assertEqual(state["retailer_direct_health"]["Joybuy"]["offers"],9)
+        self.assertEqual(state["retailer_direct_health"]["Joybuy"]["listing_quotes"],9)
 
     def test_joybuy_scans_flash_offers_not_unproductive_homepage(self):
         self.assertEqual(len(retailer_direct.PAGES["Joybuy"]),1)
@@ -328,6 +330,68 @@ class MerchantTests(unittest.TestCase):
         self.assertEqual(len(rows),1)
         self.assertEqual(rows[0]["direct_source"],"Joybuy Direct")
         self.assertEqual(len([x for x in calls.call_args_list if x.args[1]=="Joybuy"]),2)
+
+    def test_joybuy_discovers_all_valid_sale_tiles_beyond_six_pdp_checks(self):
+        # All real sale tiles should be discoverable without extra paid
+        # provider requests; PDP budget remains six direct HTTP requests.
+        product_urls = [
+            "https://www.joybuy.fr/dp/lego-star-wars-set-" + str(i) +
+            "/" + str(102762790 + i) for i in range(20)
+        ]
+        listing = "".join(
+            '<a href="' + url + '">LEGO Star Wars Set -40% '
+            '€59.99 RRP €99.99</a>' for url in product_urls
+        )
+        seen = []
+        def fetch(url, shop):
+            seen.append((url, shop))
+            if shop == "Cdiscount":
+                return "<html>no products</html>"
+            if url in product_urls:
+                return "<html>product page has no structured price</html>"
+            return listing
+        with patch.dict(os.environ, {
+            "BRIGHTDATA_API_TOKEN": "", "BRIGHTDATA_UNLOCKER_ZONE": "",
+        }), patch.object(retailer_direct, "_fetch_page", side_effect=fetch):
+            state = {}
+            offers = retailer_direct.discover(state, env={
+                "RETAIL_DIRECT_ENABLED": "true",
+                "RETAIL_PRODUCT_CHECKS_PER_SHOP": "2",
+                "RETAIL_JOYBUY_PRODUCT_CHECKS_PER_SCAN": "6",
+            }, now=NOW)
+        self.assertEqual(len(offers), 20)
+        self.assertEqual(len([call for call in seen if
+                              call[0] in product_urls]), 6)
+        self.assertEqual(state["retailer_direct_health"]["Joybuy"]["listing_quotes"],20)
+        self.assertTrue(all(x["direct_offer_type"] ==
+                            "RETAILER_LISTING_RRP_UNVERIFIED_PDP" for x in offers))
+        self.assertTrue(all(
+            direct_pipeline.to_candidate(x,bot.category_matches) is not None
+            for x in offers))
+
+    def test_joybuy_does_not_report_unambiguous_or_excluded_tiles(self):
+        sample = (
+            '<a href="' + JB + '">HyperX headset -50% €30 RRP €60 €25</a>'
+            '<a href="https://www.joybuy.fr/dp/cotton-boxers/102762791">'
+            'Boxers Calvin Klein -50% €20 RRP €40</a>'
+            '<a href="https://www.joybuy.fr/dp/lego-technic/102762792">'
+            'LEGO Technic -50% €50 RRP €100</a>'
+        )
+        def fetch(url, shop):
+            if shop == "Cdiscount":
+                return "<html>nothing</html>"
+            if "/marketing/" in url:
+                return sample
+            return "<html>No prices available</html>"
+        with patch.dict(os.environ, {
+            "BRIGHTDATA_API_TOKEN":"", "BRIGHTDATA_UNLOCKER_ZONE":""
+        }),patch.object(retailer_direct,"_fetch_page",side_effect=fetch):
+            offers=retailer_direct.discover({},env={
+                "RETAIL_DIRECT_ENABLED":"true",
+                "RETAIL_JOYBUY_PRODUCT_CHECKS_PER_SCAN":"1"
+            },now=NOW)
+        self.assertEqual(len(offers),1)
+        self.assertIn("LEGO Technic",offers[0]["title"])
 
     def test_bounded_direct_scans_and_error_handling(self):
         cdoc=('<a href="'+CD+'">Promo -39% Chaise Bauhaus 149,99€ 90€99</a>')
