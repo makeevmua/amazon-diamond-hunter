@@ -1,34 +1,10 @@
 name: Amazon Diamond Hunter FREE
+# PAUSED BY OWNER on 2026-10-22: do NOT run scans, API requests,
+# Telegram messages, caching, or GitHub Pages deployments.
+# Restore triggers and job guards only after explicit owner request.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'bot.py'
-      - 'alerts.py'
-      - 'signals.py'
-      - 'media.py'
-      - 'catalog.py'
-      - 'tests/**'
-      - 'preferences-draft.json'
-      - '.github/workflows/diamond-hunter.yml'
-      - 'state-store.sh'
-      - 'pricechecks.py'
-      - 'observations.py'
-      - 'catalog_ui.py'
-      - 'amazon_direct.py'
-      - 'direct_pipeline.py'
-      - 'fast_hunter.py'
-      - 'keepa_discovery.py'
-      - 'brightdata_verify.py'
-      - 'brightdata_search.py'
-      - 'retail_scope.py'
-      - 'retailer_direct.py'
-      - 'brightdata_probe.py'
-  schedule:
-    - cron: "3,18,33,48 * * * *" # Full discovery every 15m
-    - cron: "8,13,23,28,38,43,53,58 * * * *" # EU rapid scans between full runs
-    - cron: "0 19,20 * * *" # 21:00 Paris in summer/winter; bot checks local time
+
 permissions:
   contents: read
 concurrency:
@@ -36,6 +12,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   scan:
+    if: ${{ false }} # OWNER PAUSE: no worker, no scans, no Telegram
     runs-on: ubuntu-latest
     permissions:
       contents: write # publish periodic public snapshots to diamond-data
@@ -160,7 +137,7 @@ jobs:
     # Ordinary pushes are dry runs and must not overwrite real retailer data.
     # A deliberately tagged free-retailer scan publishes only first-party
     # shop data, with all billable provider credentials disabled.
-    if: needs.scan.result == 'success' && (github.event_name != 'push' || contains(github.event.head_commit.message, '[free-retailer-scan]'))
+    if: ${{ false }} # OWNER PAUSE: do not publish or refresh the storefront
     runs-on: ubuntu-latest
     # GitHub Pages may require one-time owner activation in Settings.
     # A deploy problem must not prevent scans and Telegram delivery.
