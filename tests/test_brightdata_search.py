@@ -157,6 +157,18 @@ class BrightSearchTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"error_code"):
                 brightdata_search._read_search("mock","amazon.fr","LEGO")
 
+    def test_brightdata_failure_status_is_explicit_but_quota_remains_one(self):
+        state={}
+        env={"BRIGHTDATA_API_TOKEN":"fake-token",
+             "BRIGHTDATA_SEARCH_PER_DAY":"1"}
+        with patch.object(brightdata_search,"_read_search",
+                          side_effect=ValueError("Provider no access")) as get:
+            self.assertEqual(brightdata_search.discover(state,env=env,now=NOW),[])
+            self.assertEqual(brightdata_search.discover(state,env=env,now=NOW),[])
+        get.assert_called_once()
+        self.assertIn("ValueError",state["brightdata_search_last_error"])
+        self.assertEqual(state["brightdata_search_usage"]["today"],1)
+
     def test_no_key_worker_can_use_search_provider_without_keepa(self):
         record=brightdata_search.normalize(example(),NOW)
         calls=[]
